@@ -7,7 +7,7 @@ struct SettingsView: View {
         TabView {
             Tab(tr("General"), systemImage: "gearshape") { GeneralSettings() }
             Tab(tr("Captions"), systemImage: "captions.bubble") { CaptionSettings() }
-            Tab(tr("Summary"), systemImage: "text.badge.star") { SummarySettings() }
+            Tab(tr("Assistant"), systemImage: "text.badge.star") { SummarySettings() }
             Tab(tr("Shortcuts"), systemImage: "command") { ShortcutSettings() }
         }
         .frame(width: 500)
@@ -311,6 +311,7 @@ private struct SummarySettings: View {
 
     var body: some View {
         @Bindable var summarizer = model.summarizer
+        @Bindable var answerer = model.answerer
         Form {
             Section {
                 Toggle(tr("Summarize while listening"), isOn: $summarizer.enabled)
@@ -365,6 +366,47 @@ private struct SummarySettings: View {
                         Text(Languages.name($0, in: Localizer.shared.locale)).tag($0)
                     }
                 }
+            } header: {
+                Text(tr("Summary"))
+            }
+            Section {
+                Toggle(tr("Answer questions as they’re asked"), isOn: $answerer.enabled)
+                TextField(tr("Extra instructions"), text: $answerer.instructions,
+                          prompt: Text(tr("Optional, e.g. “Answer in first person, as a candidate for an actuarial analyst role.”")), axis: .vertical)
+                    .lineLimit(2...5)
+            } header: {
+                Text(tr("Answers"))
+            } footer: {
+                Text(tr("When someone else asks a question, the same model writes a short answer with hints in the Answers column, in the summary’s language. With Me / Them on, only Them’s questions are answered."))
+            }
+            Section {
+                ForEach(answerer.sources) { source in
+                    HStack(spacing: 8) {
+                        Image(systemName: source.files > 1 ? "folder" : "doc.text").foregroundStyle(.secondary)
+                        Text(source.name).lineLimit(1).truncationMode(.middle).help(source.path)
+                        Spacer()
+                        Text(source.missing ? tr("Not found")
+                             : String(format: tr("%d files · %dk characters"), source.files, source.characters / 1000))
+                            .font(.callout).monospacedDigit()
+                            .foregroundStyle(source.missing ? Color.red : Color.secondary)
+                        Button { answerer.remove(source) } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless)
+                    }
+                }
+                HStack {
+                    Button(tr("Add Files or Folders…")) { answerer.pickSources() }
+                    Button(tr("Reload")) { answerer.reload() }
+                        .disabled(answerer.sources.isEmpty)
+                    Spacer()
+                    if answerer.loading { ProgressView().controlSize(.small) }
+                }
+                TextField(tr("My notes"), text: $answerer.notes,
+                          prompt: Text(tr("Facts about you worth knowing: role, background, projects, numbers…")), axis: .vertical)
+                    .lineLimit(3...8)
+            } header: {
+                Text(tr("Knowledge base"))
+            } footer: {
+                Text(tr("Answers use this first, and the model’s own knowledge only for what it doesn’t cover. Folders are read where they are (Markdown, text, PDF, Word), including subfolders, and reread at the start of every session, so an existing notes or memory folder works as it is. The excerpts that match a question are sent to the model’s provider."))
             }
         }
         .formStyle(.grouped)

@@ -135,7 +135,7 @@ final class Summarizer {
     }
 
     /// Sends one request; turns a non-JSON error page into its HTTP status.
-    private static func send(_ request: URLRequest, endpoint: SummaryEndpoint) async throws -> String {
+    static func send(_ request: URLRequest, endpoint: SummaryEndpoint) async throws -> String {
         let (data, response) = try await URLSession.shared.data(for: request)
         do {
             return try endpoint.parse(data)

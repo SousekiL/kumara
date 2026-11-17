@@ -114,6 +114,10 @@ Settings › General › **Usage** shows audio sent to Soniox this session, this
 
 Settings › **Summary**: pick any OpenAI-compatible model (OpenAI, DeepSeek, Qwen, OpenRouter, Ollama…) or Claude, with its own API key. While you listen, a column beside the transcript keeps a summary (key points, decisions, questions and next steps) that updates every few hundred characters and is rewritten from the transcript every few updates, so earlier points get revised. ↻ rewrites now; the summary is saved with the session and leads the Markdown export. The transcript text goes to the model's provider; use Ollama to keep it on your Mac.
 
+## Answers and knowledge base
+
+Settings › Assistant › **Answers**: when someone else asks a question, the summary's model writes a short answer with hints in the **Answers** column beside the transcript. It draws first on your **knowledge base**: files and folders you point it at (Markdown, text, PDF, Word; folders are read in place and reread at the start of each session, so an existing notes or memory folder works as it is) plus your own notes. What the knowledge base doesn't cover, the model answers from its own knowledge, and each answer says which it was.
+
 ## Soniox account
 
 Settings › General › **Soniox account** shows what Soniox itself reports: this month's cost for your key's project (all apps), and, with an organization API key (`snx_org_…`), the prepaid balance, also shown in the menu bar.

@@ -112,6 +112,8 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var nextColor: Int
     /// The live summary; absent in sessions saved before summaries existed.
     public var summary: LiveSummary?
+    /// Answers to questions heard; absent in sessions saved before answers existed.
+    public var answers: [QuestionAnswer]?
 }
 
 @MainActor
@@ -135,6 +137,8 @@ public final class Transcript: Identifiable {
     public private(set) var epoch = 0
     /// Kept up to date by the summarizer while listening, and saved with the session.
     public var summary: LiveSummary? { didSet { if summary != oldValue { touch() } } }
+    /// Answers to questions heard while listening, oldest first.
+    public var answers: [QuestionAnswer] = [] { didSet { if answers != oldValue { touch() } } }
 
     /// The line still growing, per channel; "" is the single stream of the normal modes.
     @ObservationIgnored private var openLines: [String: Int] = [:]
@@ -188,13 +192,14 @@ public final class Transcript: Identifiable {
         nextOrdinal = s.nextOrdinal
         nextColor = s.nextColor
         summary = s.summary
+        answers = s.answers ?? []
     }
 
     public var snapshot: TranscriptSnapshot {
         TranscriptSnapshot(id: id, title: title, createdAt: createdAt, updatedAt: updatedAt, lines: lines,
                            speakers: speakerOrder.compactMap { speakers[$0] }, speakerOrder: speakerOrder,
                            epoch: epoch, nextLineID: nextLineID, nextOrdinal: nextOrdinal, nextColor: nextColor,
-                           summary: summary)
+                           summary: summary, answers: answers.isEmpty ? nil : answers)
     }
 
     /// Stamps the session with the time listening first starts.

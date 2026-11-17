@@ -224,7 +224,7 @@ public enum SummaryPrompt {
     }
 
     /// Strips code fences and preambles some models add anyway.
-    static func clean(_ text: String) -> String {
+    public static func clean(_ text: String) -> String {
         var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasPrefix("```") {
             t = t.split(separator: "\n", omittingEmptySubsequences: false).dropFirst().joined(separator: "\n")

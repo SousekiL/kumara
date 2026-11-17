@@ -35,6 +35,8 @@ final class AppModel {
     @ObservationIgnored let client = SonioxStreams()
     /// The live summary, on its own model and key.
     let summarizer = Summarizer()
+    /// Answers to questions heard, on the summary's model, from the knowledge base first.
+    let answerer = Answerer()
     @ObservationIgnored private var summaryTimer: Timer?
     @ObservationIgnored private var accountTimer: Timer?
     @ObservationIgnored let audio = AudioPipeline()
@@ -252,7 +254,7 @@ final class AppModel {
         store.track(transcript)
         selectedID = transcript.id
         if hasKey, storedRegion == nil { checkKey(after: .zero) }
-        summaryTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+        summaryTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tickSummary() }
         }
         accountTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
@@ -304,7 +306,11 @@ final class AppModel {
         } else {
             status = .live
         }
-        if startedAt == nil { startedAt = .now }
+        if startedAt == nil {
+            startedAt = .now
+            // Pick up edits to knowledge-base folders made since the last session.
+            if answerer.enabled { answerer.reload() }
+        }
         transcript.markStarted()
         Task {
             do {
@@ -729,8 +735,15 @@ final class AppModel {
     }
 
     private func tickSummary() {
-        guard summarizer.enabled, [.live, .standby, .paused].contains(status) else { return }
-        summarizer.tick(transcript, languageName: summaryLanguageName, name: summaryName(in: transcript))
+        guard [.live, .standby, .paused].contains(status) else { return }
+        if summarizer.enabled {
+            summarizer.tick(transcript, languageName: summaryLanguageName, name: summaryName(in: transcript))
+        }
+        if answerer.enabled {
+            let hasChannels = transcript.visibleSpeakers.contains { Channel($0.id) != nil }
+            answerer.tick(transcript, summarizer: summarizer, languageName: summaryLanguageName,
+                          channelsOnly: hasChannels, name: summaryName(in: transcript))
+        }
     }
 
     func refreshSummary(_ t: Transcript) {

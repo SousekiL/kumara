@@ -232,3 +232,56 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(payload["translation"] == nil)
     }
 }
+
+@MainActor
+@Suite struct AnswerTests {
+    @Test func parsesSourceAndSkip() {
+        let a = AnswerPrompt.parse("SOURCE: knowledge\nLoss ratio is 62%.\n- From the 2025 report")
+        #expect(a?.fromKnowledge == true)
+        #expect(a?.text == "Loss ratio is 62%.\n- From the 2025 report")
+        #expect(AnswerPrompt.parse("SOURCE: model\nIt depends.")?.fromKnowledge == false)
+        #expect(AnswerPrompt.parse("SKIP") == nil)
+        #expect(AnswerPrompt.parse("SOURCE: model\nSKIP.") == nil)
+        #expect(AnswerPrompt.parse("Plain answer")?.text == "Plain answer")
+    }
+
+    @Test func smallKnowledgeBaseGoesInWhole() {
+        let kb = KnowledgeBase(documents: [("resume.md", "Worked at TikTok on causal inference.\nPassed exam ASTAM.")])
+        #expect(kb.excerpts(for: "anything") == "[resume.md]\nWorked at TikTok on causal inference.\nPassed exam ASTAM.")
+        #expect(KnowledgeBase().excerpts(for: "anything").isEmpty)
+    }
+
+    @Test func largeKnowledgeBasePicksMatchingChunks() {
+        let filler = (0..<40).map { "Paragraph \($0) about unrelated weather and gardening topics, long enough to fill space in the base." }.joined(separator: "\n")
+        let kb = KnowledgeBase(documents: [
+            ("notes.txt", filler),
+            ("pricing.txt", "Our reserving model uses the chain ladder method with a 62% loss ratio.\n准备金评估采用链梯法。"),
+        ], chunkSize: 300)
+        let english = kb.excerpts(for: "What loss ratio does the reserving model assume?", limit: 600)
+        #expect(english.contains("[pricing.txt]") && english.contains("62%"))
+        #expect(english.count <= 700)
+        let chinese = kb.excerpts(for: "准备金怎么评估？", limit: 600)
+        #expect(chinese.contains("链梯法"))
+        #expect(kb.excerpts(for: "zzzz qqqq", limit: 600).isEmpty)
+    }
+
+    @Test func waitingQuestionIsNewestUnhandledFromThem() {
+        let t = Transcript()
+        t.ingest(tokens([("What is IBNR?", true, nil), ("<end>", true, nil)]), channel: .them)
+        t.ingest(tokens([("Does that make sense?", true, nil), ("<end>", true, nil)]), channel: .me)
+        t.ingest(tokens([("How would you estimate it?", true, nil), ("<end>", true, nil)]), channel: .them)
+        t.ingest(tokens([("And why", true, nil)]), channel: .them)
+        let w = t.waitingQuestion(handled: [], channelsOnly: true)
+        #expect(w?.line.original == "How would you estimate it?")
+        #expect(w?.all.count == 2)
+        #expect(t.waitingQuestion(handled: Set(w?.all ?? []), channelsOnly: true) == nil)
+        #expect(t.waitingQuestion(handled: [], channelsOnly: true, now: .now.addingTimeInterval(500)) == nil)
+    }
+
+    @Test func answersSurviveSave() throws {
+        let t = Transcript()
+        t.answers = [QuestionAnswer(id: 0, question: "Q?", answer: "A.", fromKnowledge: true, createdAt: .now)]
+        let back = Transcript(snapshot: try JSONDecoder().decode(TranscriptSnapshot.self, from: JSONEncoder().encode(t.snapshot)))
+        #expect(back.answers.first?.answer == "A.")
+    }
+}
