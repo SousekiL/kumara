@@ -10,13 +10,16 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
     /// Whether the answer rests on the user's own knowledge base rather than the model's knowledge.
     public var fromKnowledge: Bool
     public var createdAt: Date
+    /// In interviews, the kind of question: technical, case, behavioral, experience, motivation or reverse.
+    public var kind: String?
 
-    public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date) {
+    public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date, kind: String? = nil) {
         self.id = id
         self.question = question
         self.answer = answer
         self.fromKnowledge = fromKnowledge
         self.createdAt = createdAt
+        self.kind = kind
     }
 }
 
@@ -126,7 +129,7 @@ public struct KnowledgeBase: Sendable {
 }
 
 public enum AnswerPrompt {
-    public static func system(language: String, mode: AssistantMode = .meeting, extra: String = "") -> String {
+    public static func system(language: String, mode: AssistantMode = .meeting, role: String = "", extra: String = "") -> String {
         var prompt = """
         You assist someone taking part in a live conversation (a meeting, an interview, a lecture or a call). A question was just asked. Give them what they need to answer it well, short enough to read at a glance. Write in \(language).
 
@@ -147,7 +150,8 @@ public enum AnswerPrompt {
 
         The transcript comes from speech recognition and may contain errors; read through them.
         """
-        if !mode.answerGuidance.isEmpty { prompt += "\n\n" + mode.answerGuidance }
+        let guidance = mode.answerGuidance(role: role)
+        if !guidance.isEmpty { prompt += "\n\n" + guidance }
         let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
         if !extra.isEmpty {
             prompt += "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)"
@@ -155,7 +159,8 @@ public enum AnswerPrompt {
         return prompt
     }
 
-    public static func user(question: String, asker: String, conversation: String, knowledge: String) -> String {
+    /// `previous` are the questions answered most recently, so a restatement isn't answered twice.
+    public static func user(question: String, asker: String, conversation: String, knowledge: String, previous: [String] = []) -> String {
         var out = ""
         if !knowledge.isEmpty {
             out += "The reader's knowledge base (excerpts):\n<knowledge>\n\(knowledge)\n</knowledge>\n\n"
@@ -163,22 +168,39 @@ public enum AnswerPrompt {
         if !conversation.isEmpty {
             out += "Recent conversation:\n<conversation>\n\(conversation)\n</conversation>\n\n"
         }
+        if !previous.isEmpty {
+            out += "Questions already answered (reply SKIP if this only repeats one of them; a follow-up asking for more is new):\n"
+            out += previous.map { "- \($0)" }.joined(separator: "\n") + "\n\n"
+        }
         out += "The question to answer, asked by \(asker):\n<question>\n\(question)\n</question>"
         return out
     }
 
-    /// The answer and where it came from, or nil when the model declined to answer.
-    public static func parse(_ reply: String) -> (text: String, fromKnowledge: Bool)? {
-        var text = SummaryPrompt.clean(reply)
+    static let kinds: Set<String> = ["technical", "case", "behavioral", "experience", "motivation", "reverse"]
+
+    /// The answer, where it came from and its kind, or nil when the model declined to answer.
+    public static func parse(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?)? {
         var fromKnowledge = false
-        if let first = text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first,
-           first.uppercased().hasPrefix("SOURCE:") {
-            fromKnowledge = first.lowercased().contains("knowledge")
-            text = String(text.dropFirst(first.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        var kind: String?
+        var body: [Substring] = []
+        // SOURCE and TYPE lead the reply, in either order.
+        var leading = true
+        for line in SummaryPrompt.clean(reply).split(separator: "\n", omittingEmptySubsequences: false) {
+            let upper = line.trimmingCharacters(in: .whitespaces).uppercased()
+            if leading, upper.hasPrefix("SOURCE:") {
+                fromKnowledge = upper.contains("KNOWLEDGE")
+            } else if leading, upper.hasPrefix("TYPE:") {
+                let value = upper.dropFirst(5).trimmingCharacters(in: .whitespaces).lowercased()
+                kind = kinds.contains(value) ? value : nil
+            } else {
+                leading = false
+                body.append(line)
+            }
         }
+        let text = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         let bare = text.trimmingCharacters(in: CharacterSet(charactersIn: " .。\n")).uppercased()
         if bare.isEmpty || bare == "SKIP" { return nil }
-        return (text, fromKnowledge)
+        return (text, fromKnowledge, kind)
     }
 }
 

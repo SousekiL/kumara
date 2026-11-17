@@ -179,6 +179,8 @@ struct SummaryPanel: View {
             Text(tr("Answering…"))
         } else if !answerer.enabled {
             Text(tr("Off"))
+        } else if summarizer.mode == .lecture {
+            Text(tr("Not answering in Lecture mode"))
         } else if summarizer.isConfigured {
             Text(answerer.knowledgeCharacters > 0 ? tr("Using your knowledge base") : tr("No knowledge base; the model answers on its own"))
         } else {
@@ -295,6 +297,12 @@ private struct AnswerCard: View {
                 .help(item.question)
             SummaryText(markdown: item.answer, fontSize: fontSize, family: family)
             HStack(spacing: 6) {
+                if let kind = item.kind {
+                    Text(QuestionKind.title(kind))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(.quaternary, in: .capsule)
+                }
                 Label(item.fromKnowledge ? tr("From your knowledge base") : tr("Model’s own knowledge"),
                       systemImage: item.fromKnowledge ? "books.vertical" : "sparkles")
                 Text(verbatim: "·")
@@ -332,9 +340,23 @@ extension AssistantMode {
 
     var explanation: String {
         switch self {
-        case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. Only questions left open are answered.")
-        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Questions asked by others are answered.")
-        case .interview: tr("Interviews: running notes of each question and what the answer covered. Every question and prompt from the other side is answered, in the first person.")
+        case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers.")
+        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer; discussion between people doesn't.")
+        case .interview: tr("Interviews: running notes of each question and what the answer covered. Interview questions for your role get an answer in the first person; small talk, logistics and your own questions don't.")
+        }
+    }
+}
+
+enum QuestionKind {
+    static func title(_ kind: String) -> String {
+        switch kind {
+        case "technical": tr("Technical")
+        case "case": tr("Case")
+        case "behavioral": tr("Behavioral")
+        case "experience": tr("Experience")
+        case "motivation": tr("Motivation")
+        case "reverse": tr("Your questions")
+        default: kind
         }
     }
 }

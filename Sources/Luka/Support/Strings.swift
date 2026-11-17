@@ -199,6 +199,18 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Not answering in Lecture mode": "讲座模式下不回答问题",
+        "Technical": "技术",
+        "Case": "案例",
+        "Behavioral": "行为",
+        "Experience": "经历",
+        "Motivation": "动机",
+        "Your questions": "反问",
+        "Interviewing for": "面试岗位",
+        "Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers.": "演讲、讲座、播客和视频：一份结构化总结，随内容进展整体刷新。不回答问题。",
+        "Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer; discussion between people doesn't.": "会议和通话：按顺序往下追加要点，标出决定和待办。只回答事实或技术类问题，参会者之间的讨论不回答。",
+        "Interviews: running notes of each question and what the answer covered. Interview questions for your role get an answer in the first person; small talk, logistics and your own questions don't.": "面试：按顺序记下每个问题和回答要点。与岗位相关的面试问题用第一人称作答；寒暄、事务性问题和你自己的提问不回答。",
+        "Lecture mode answers nothing. Meeting mode answers only factual or technical questions. Interview mode answers the questions an interviewer asks for the role above (technical, case, behavioral, experience, motivation), and suggests questions to ask back; add your resume and the job description to the knowledge base. With Me / Them on, your own questions are never answered.": "讲座模式不回答。会议模式只回答事实或技术类问题。面试模式回答面试官针对上面岗位提出的问题（技术、案例、行为、经历、动机），被问“你有什么问题”时会建议反问；建议把简历和职位描述加进知识库。开启“我 / 对方”后，你自己的提问一定不会被回答。",
         "To answer only the interviewer’s questions and never your own, Luka needs to hear you and them separately.": "要做到只回答面试官的问题、不回答你自己问的，Luka 需要把你和对方的声音分开听。",
         "Turn On Me / Them": "开启“我 / 对方”",
         "Summary and answers · drag to move": "总结和回答 · 可上下拖动",

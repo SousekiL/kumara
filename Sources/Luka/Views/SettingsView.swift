@@ -404,6 +404,20 @@ private struct SummarySettings: View {
             }
             Section {
                 Toggle(tr("Answer questions as they’re asked"), isOn: $answerer.enabled)
+                LabeledContent(tr("Interviewing for")) {
+                    HStack(spacing: 6) {
+                        TextField("", text: $answerer.role, prompt: Text(verbatim: "Data Scientist"))
+                            .labelsHidden()
+                        Menu {
+                            ForEach(Answerer.rolePresets, id: \.self) { preset in
+                                Button(preset) { answerer.role = preset }
+                            }
+                        } label: { Image(systemName: "chevron.down") }
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                    }
+                }
+                .disabled(!answerer.enabled)
                 TextField(tr("Extra instructions"), text: $answerer.instructions,
                           prompt: Text(tr("Optional, e.g. “Answer in first person, as a candidate for an actuarial analyst role.”")), axis: .vertical)
                     .lineLimit(2...5)
@@ -411,7 +425,7 @@ private struct SummarySettings: View {
             } header: {
                 Text(tr("Answers"))
             } footer: {
-                Text(tr("When someone else asks a question, a short answer with hints appears beside the transcript. With Me / Them on, only Them’s questions are answered. The mode sets how readily."))
+                Text(tr("Lecture mode answers nothing. Meeting mode answers only factual or technical questions. Interview mode answers the questions an interviewer asks for the role above (technical, case, behavioral, experience, motivation), and suggests questions to ask back; add your resume and the job description to the knowledge base. With Me / Them on, your own questions are never answered."))
             }
             .onChange(of: answerer.enabled) {
                 if answerer.enabled {

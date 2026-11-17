@@ -28,6 +28,9 @@ final class Answerer {
         }
     }
     var instructions: String { didSet { defaults.set(instructions, forKey: "answers.instructions") } }
+    /// The job being interviewed for, which tells Interview mode what counts as a technical question.
+    var role: String { didSet { defaults.set(role, forKey: "answers.role") } }
+    static let rolePresets = ["Data Scientist", "Data Analyst", "Actuarial Analyst", "AI Product Manager"]
     /// The user's own notes, part of the knowledge base.
     var notes: String {
         didSet {
@@ -55,6 +58,7 @@ final class Answerer {
         let d = UserDefaults.standard
         enabled = d.bool(forKey: "answers.enabled")
         instructions = d.string(forKey: "answers.instructions") ?? ""
+        role = d.string(forKey: "answers.role") ?? "Data Scientist"
         notes = d.string(forKey: "answers.notes") ?? ""
         panelShowsAnswers = d.bool(forKey: "answers.panelShown")
         sources = (d.stringArray(forKey: "answers.sources") ?? []).map { Source(path: $0) }
@@ -126,11 +130,13 @@ final class Answerer {
         handled.formUnion(waiting.all)
         let line = waiting.line
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
+        let previous = t.answers.suffix(3).map { Questions.lastSentence($0.question) ?? $0.question }
         let user = AnswerPrompt.user(question: line.original, asker: line.speaker.map(name) ?? "someone",
-                                     conversation: conversation, knowledge: knowledge.excerpts(for: line.original))
+                                     conversation: conversation, knowledge: knowledge.excerpts(for: line.original),
+                                     previous: previous)
         let endpoint = summarizer.endpoint
         guard let request = endpoint.request(apiKey: summarizer.apiKey,
-                                             system: AnswerPrompt.system(language: languageName, mode: mode, extra: instructions),
+                                             system: AnswerPrompt.system(language: languageName, mode: mode, role: role, extra: instructions),
                                              user: user, maxTokens: 500) else { return }
         working = true
         Task {
@@ -140,7 +146,7 @@ final class Answerer {
                 lastError = nil
                 guard let answer = AnswerPrompt.parse(reply) else { return }
                 t.answers.append(QuestionAnswer(id: line.id, question: line.original, answer: answer.text,
-                                                fromKnowledge: answer.fromKnowledge, createdAt: .now))
+                                                fromKnowledge: answer.fromKnowledge, createdAt: .now, kind: answer.kind))
                 onAnswer()
             } catch {
                 lastError = error.localizedDescription

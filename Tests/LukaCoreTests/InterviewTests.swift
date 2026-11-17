@@ -341,8 +341,37 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let interview = SummaryPrompt.system(language: "English", mode: .interview)
         #expect(interview.contains("Reply with only the lines to add") && interview.contains("This is an interview"))
         #expect(AnswerPrompt.system(language: "English", mode: .interview).contains("first person"))
+        #expect(AnswerPrompt.system(language: "English", mode: .interview, role: "Data Scientist").contains("a Data Scientist position"))
+        #expect(AnswerPrompt.system(language: "English", mode: .meeting).contains("When in doubt, SKIP"))
+        #expect(AssistantMode.lecture.eagerness == .off && AssistantMode.meeting.eagerness == .conservative)
         let p = SummaryPrompt.overview(current: LiveSummary(text: "## Main points\n- a", updatedAt: .now, coveredLineID: 0, context: "A talk."), newTranscript: "S: more")
         #expect(p.contains("CONTEXT: A talk.\n## Main points\n- a"))
         #expect(SummaryPrompt.shouldUpdateOverview(newWeight: 1000, sinceUpdate: 1) && !SummaryPrompt.shouldUpdateOverview(newWeight: 300, sinceUpdate: 20))
+    }
+}
+
+
+@MainActor
+@Suite struct AnswerFilterTests {
+    @Test func lectureAnswersNothing() {
+        let t = Transcript()
+        t.ingest(tokens([("So why does regression to the mean happen?", true, nil), ("<end>", true, nil)]))
+        #expect(t.waitingQuestion(handled: [], channelsOnly: false, eagerness: .off) == nil)
+        #expect(t.waitingQuestion(handled: [], channelsOnly: false, eagerness: .conservative) != nil)
+    }
+
+    @Test func parsesInterviewType() {
+        let a = AnswerPrompt.parse("SOURCE: model\nTYPE: technical\nA p-value is…\n- Not P(H0 | data)")
+        #expect(a?.kind == "technical" && a?.text == "A p-value is…\n- Not P(H0 | data)" && a?.fromKnowledge == false)
+        let b = AnswerPrompt.parse("TYPE: Behavioral\nSOURCE: knowledge\nAt TikTok…")
+        #expect(b?.kind == "behavioral" && b?.fromKnowledge == true)
+        #expect(AnswerPrompt.parse("SOURCE: model\nTYPE: weird\nText")?.kind == nil)
+        #expect(AnswerPrompt.parse("SOURCE: model\nTYPE: technical\nSKIP") == nil)
+    }
+
+    @Test func previousQuestionsGoInThePrompt() {
+        let u = AnswerPrompt.user(question: "Q", asker: "Them", conversation: "", knowledge: "", previous: ["What is IBNR?"])
+        #expect(u.contains("- What is IBNR?") && u.contains("reply SKIP if this only repeats"))
+        #expect(!AnswerPrompt.user(question: "Q", asker: "Them", conversation: "", knowledge: "").contains("already answered"))
     }
 }
