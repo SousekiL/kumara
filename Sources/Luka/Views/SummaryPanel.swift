@@ -185,7 +185,25 @@ struct SummaryPanel: View {
         }
     }
 
+    /// Without Me / Them, nothing tells the interviewer's questions from the reader's own for certain.
+    @ViewBuilder private var channelHint: some View {
+        if answerer.enabled, summarizer.mode == .interview, !model.splitsBySource {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(tr("To answer only the interviewer’s questions and never your own, Luka needs to hear you and them separately."))
+                Button(tr("Turn On Me / Them")) { model.separatesSpeakers = true }
+                    .controlSize(.small)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.yellow.opacity(0.12), in: .rect(cornerRadius: 8))
+            .padding(.bottom, 12)
+        }
+    }
+
     @ViewBuilder private var answers: some View {
+        channelHint
         if !transcript.answers.isEmpty {
             // Newest first and at full strength; earlier ones step back.
             let newest = transcript.answers.last?.id

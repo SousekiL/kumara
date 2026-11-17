@@ -114,6 +114,10 @@ Settings › General › **Usage** shows audio sent to Soniox this session, this
 
 Settings › **Assistant**: pick any OpenAI-compatible model (OpenAI, DeepSeek, Qwen, OpenRouter, Ollama…) or Claude, with its own API key. While you listen, a column beside the transcript keeps running notes: every few sentences, new points are added at the end under topic headings, in the order they were said, and what is already written stays put, so you only read the newest lines to keep up. ↻ writes the notes again from the whole transcript; they are saved with the session and lead the Markdown export. The transcript text goes to the model's provider; use Ollama to keep it on your Mac.
 
+## Floating button
+
+While Luka listens, a small button sits on the right edge of the screen, its dots moving with the sound. Click it for the summary and answers in a floating panel over any app, full-screen ones included; a red mark means an answer arrived while it was closed. Drag it up or down; turn it off in Settings › Assistant › Display.
+
 ## Answers and knowledge base
 
 Settings › Assistant › **Answers**: when someone else asks a question, the summary's model writes a short answer with hints in the **Answers** column beside the transcript. It draws first on your **knowledge base**: files and folders you point it at (Markdown, text, PDF, Word; folders are read in place and reread at the start of each session, so an existing notes or memory folder works as it is) plus your own notes. What the knowledge base doesn't cover, the model answers from its own knowledge, and each answer says which it was.

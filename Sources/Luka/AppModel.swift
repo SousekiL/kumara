@@ -146,6 +146,12 @@ final class AppModel {
     var captionLanguageFilter: String? {
         mode == .threeWay && sessionConfig.threeWayLanguages.contains(captionLanguage) ? captionLanguage : nil
     }
+    /// The edge button for the summary and answers, shown while listening.
+    var showsDockButton: Bool { didSet { store(showsDockButton, "showsDockButton") } }
+    /// Whether the edge button's panel is open.
+    var dockOpen = false
+    /// An answer arrived while the panel was closed.
+    var dockBadge = false
     /// Font family for captions, the transcript and the summary; empty is the system font.
     var fontFamily: String { didSet { store(fontFamily, "fontFamily") } }
     var captionStyle: CaptionStyle { didSet { store(captionStyle.rawValue, "captionStyle") } }
@@ -224,6 +230,7 @@ final class AppModel {
         captionShowsOriginal = d.bool(forKey: "captionShowsOriginal")
         captionLanguage = d.string(forKey: "captionLanguage") ?? ""
         fontFamily = d.string(forKey: "fontFamily") ?? ""
+        showsDockButton = d.object(forKey: "showsDockButton") as? Bool ?? true
         captionStyle = CaptionStyle(rawValue: d.string(forKey: "captionStyle") ?? "") ?? .glass
         captionPinned = d.object(forKey: "captionPinned") as? Bool ?? true
         transcriptFontSize = d.object(forKey: "transcriptFontSize") as? Double ?? 15
@@ -248,6 +255,12 @@ final class AppModel {
             } else {
                 self.handleTranslation(event, lane: lane)
             }
+        }
+        answerer.onAnswer = { [weak self] in
+            guard let self else { return }
+            // A fresh answer is what the reader wants to see next.
+            self.answerer.panelShowsAnswers = true
+            if !self.dockOpen { self.dockBadge = true }
         }
         client.onUsage = { [weak self] ms, translated in self?.pendingUsage.add(ms: ms, translated: translated) }
         client.carryover = { [weak self] in self?.transcript.recentContext() }

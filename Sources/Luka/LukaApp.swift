@@ -59,12 +59,14 @@ struct LukaApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     private var captions: CaptionPanelController?
+    private var dock: AssistantDockController?
     private let hotKeys = HotKeys()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let captions = CaptionPanelController(model: model)
         self.captions = captions
         if model.captionsVisible { captions.show() }
+        dock = AssistantDockController(model: model)
         model.applyActivationPolicy()
         let chord = controlKey | optionKey
         hotKeys.register([

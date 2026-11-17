@@ -199,6 +199,11 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "To answer only the interviewer’s questions and never your own, Luka needs to hear you and them separately.": "要做到只回答面试官的问题、不回答你自己问的，Luka 需要把你和对方的声音分开听。",
+        "Turn On Me / Them": "开启“我 / 对方”",
+        "Summary and answers · drag to move": "总结和回答 · 可上下拖动",
+        "Floating button while listening": "转写时显示浮动按钮",
+        "The language and text size of the summary and the answers. The floating button sits on the right edge of the screen; click it for the summary and answers over any app, drag it up or down.": "总结和回答的语言与字号。浮动按钮贴在屏幕右边缘，点击可在任意应用上方查看总结和回答，可上下拖动。",
         "Lecture": "讲座",
         "Meeting": "会议",
         "Interview": "面试",

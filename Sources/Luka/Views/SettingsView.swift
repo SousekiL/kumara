@@ -465,10 +465,11 @@ private struct SummarySettings: View {
                         Text(verbatim: "\(Int(summarizer.fontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
                     }
                 }
+                Toggle(tr("Floating button while listening"), isOn: Binding(get: { model.showsDockButton }, set: { model.showsDockButton = $0 }))
             } header: {
                 Text(tr("Display"))
             } footer: {
-                Text(tr("The language and text size of the summary and the answers."))
+                Text(tr("The language and text size of the summary and the answers. The floating button sits on the right edge of the screen; click it for the summary and answers over any app, drag it up or down."))
             }
         }
         .formStyle(.grouped)

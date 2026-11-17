@@ -41,7 +41,7 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
         case .meeting:
             ""
         case .interview:
-            "This is an interview and the reader is the one being interviewed. Treat prompts and requests as questions too: \"tell me about…\", \"walk me through…\", or a statement that invites a response. Write the answer in the first person, as the reader would say it. For a behavioral question give a situation, action, result outline drawn from the knowledge base; for a technical one give the answer, then the key terms to mention. Reply SKIP only to pure small talk and logistics."
+            "This is an interview and the reader is the one being interviewed. Treat prompts and requests as questions too: \"tell me about…\", \"walk me through…\", or a statement that invites a response. Write the answer in the first person, as the reader would say it. For a behavioral question give a situation, action, result outline drawn from the knowledge base; for a technical one give the answer, then the key terms to mention. Reply SKIP to pure small talk and logistics. Never answer the reader's own questions: when the question comes from the candidate rather than the interviewer (a speaker named \"Me\", or someone asking about the role, the team, the process or next steps), reply SKIP."
         }
     }
 }

@@ -44,6 +44,8 @@ final class Answerer {
     private(set) var working = false
     private(set) var lastError: String?
 
+    /// Called when an answer has been added.
+    @ObservationIgnored var onAnswer: () -> Void = {}
     @ObservationIgnored private var knowledge = KnowledgeBase()
     @ObservationIgnored private var handled: Set<Int> = []
     @ObservationIgnored private var sessionID: UUID?
@@ -139,6 +141,7 @@ final class Answerer {
                 guard let answer = AnswerPrompt.parse(reply) else { return }
                 t.answers.append(QuestionAnswer(id: line.id, question: line.original, answer: answer.text,
                                                 fromKnowledge: answer.fromKnowledge, createdAt: .now))
+                onAnswer()
             } catch {
                 lastError = error.localizedDescription
                 AudioLog.write("answer failed: \(error.localizedDescription)")
