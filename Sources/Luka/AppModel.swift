@@ -38,7 +38,12 @@ final class AppModel {
     @ObservationIgnored private var idleDisconnect: DispatchWorkItem?
     @ObservationIgnored private var quiet: QuietGate
     /// The last 2 s heard during standby, sent on waking so the first words aren't lost.
-    @ObservationIgnored private var preroll: [Data] = []
+    /// Each chunk keeps its Me / Them lane, or nil when every stream hears it.
+    @ObservationIgnored private var preroll: [(data: Data, lane: Int?)] = []
+    /// Whether the open streams are Me / Them: set when they connect, so audio routes to match.
+    @ObservationIgnored private var splitActive = false
+    /// The microphone's latest level in Me / Them mode, so either voice keeps the session awake.
+    @ObservationIgnored private var micLevel: Float = 0
     @ObservationIgnored let feedFile: URL?
 
     private(set) var status: Status = .idle { didSet { if status != oldValue { followStatusWithCaptions() } } }
@@ -59,7 +64,7 @@ final class AppModel {
         }
     }
 
-    var mode: TranslationMode { didSet { store(mode.rawValue, "mode"); streamSettingsChanged() } }
+    var mode: TranslationMode { didSet { store(mode.rawValue, "mode"); if separatesSpeakers { routingChanged() } else { streamSettingsChanged() } } }
     /// Soniox code, or "auto".
     var source: String { didSet { store(source, "source"); streamSettingsChanged() } }
     var target: String { didSet { store(target, "target"); streamSettingsChanged() } }
@@ -67,7 +72,30 @@ final class AppModel {
     var languageB: String { didSet { store(languageB, "languageB"); streamSettingsChanged() } }
     var languageC: String { didSet { store(languageC, "languageC"); streamSettingsChanged() } }
     var context: String { didSet { store(context, "context") } }
-    var audioSource: AudioSource { didSet { store(audioSource.rawValue, "audioSource"); audioSourceChanged() } }
+    var audioSource: AudioSource {
+        didSet {
+            store(audioSource.rawValue, "audioSource")
+            if separatesSpeakers { routingChanged() } else { audioSourceChanged() }
+        }
+    }
+    /// Me / Them: with Mac audio + microphone, transcribe each on its own stream, so the microphone
+    /// is always you and the Mac audio is always them. Costs a second stream.
+    var separatesSpeakers: Bool { didSet { store(separatesSpeakers, "separatesSpeakers"); routingChanged() } }
+    /// In Me / Them mode, whether your own words are translated too, or only written down.
+    var translatesMyVoice: Bool { didSet { store(translatesMyVoice, "translatesMyVoice"); if splitsBySource { streamSettingsChanged() } } }
+    /// Keep the latest question someone asked above the captions.
+    var pinsQuestions: Bool { didSet { store(pinsQuestions, "pinsQuestions") } }
+    /// The pinned question the user closed; it stays closed until a new one is asked.
+    var dismissedQuestion: Int?
+    /// Me / Them applies to Mac audio + microphone, outside three-way mode (which already runs a stream per language).
+    var splitsBySource: Bool { separatesSpeakers && audioSource == .both && mode != .threeWay }
+
+    // Usage: audio sent to Soniox, to estimate the bill.
+    private(set) var sessionUsage = UsageTotals()
+    private(set) var monthUsage = UsageTotals()
+    private(set) var lastMonthUsage = UsageTotals()
+    /// Counted on every chunk, published every few seconds so views don't redraw ten times a second.
+    @ObservationIgnored private var pendingUsage = UsageTotals()
     /// Core Audio UID of the chosen input device; nil follows the system default.
     var microphone: String? {
         didSet {
@@ -144,6 +172,9 @@ final class AppModel {
         languageC = d.string(forKey: "languageC") ?? (["en", "ko", "zh"].first { $0 != a && $0 != b } ?? "ja")
         context = d.string(forKey: "context") ?? ""
         audioSource = AudioSource(rawValue: d.string(forKey: "audioSource") ?? "") ?? .system
+        separatesSpeakers = d.bool(forKey: "separatesSpeakers")
+        translatesMyVoice = d.object(forKey: "translatesMyVoice") == nil ? true : d.bool(forKey: "translatesMyVoice")
+        pinsQuestions = d.bool(forKey: "pinsQuestions")
         microphone = d.string(forKey: "microphone")
         pausesWhenQuiet = d.object(forKey: "pausesWhenQuiet") == nil ? true : d.bool(forKey: "pausesWhenQuiet")
         quiet = QuietGate(sleepAfterSeconds: d.object(forKey: "quietSeconds") == nil ? 180 : d.integer(forKey: "quietSeconds"))
@@ -167,17 +198,31 @@ final class AppModel {
         feedFile = args.firstIndex(of: "--feed").flatMap { args.indices.contains($0 + 1) ? URL(fileURLWithPath: args[$0 + 1]) : nil }
 
         client.onEvent = { [weak self] lane, event in
-            if lane == 0 { self?.handle(event) } else { self?.handleTranslation(event, lane: lane) }
+            guard let self else { return }
+            if self.splitActive {
+                self.handle(event, channel: lane == 1 ? .me : .them)
+            } else if lane == 0 {
+                self.handle(event)
+            } else {
+                self.handleTranslation(event, lane: lane)
+            }
         }
+        client.onUsage = { [weak self] ms, translated in self?.pendingUsage.add(ms: ms, translated: translated) }
         client.carryover = { [weak self] in self?.transcript.recentContext() }
-        audio.onChunk = { [weak self] data, level in
-            Task { @MainActor in self?.heard(data, level: level) }
+        audio.onChunk = { [weak self] data, level, channel in
+            Task { @MainActor in self?.heard(data, level: level, channel: channel) }
         }
+        let now = Date.now
+        monthUsage = Self.loadUsage(UsageTotals.monthKey(now))
+        lastMonthUsage = Self.loadUsage(UsageTotals.monthKey(Calendar.current.date(byAdding: .month, value: -1, to: now) ?? now))
         store.track(transcript)
         selectedID = transcript.id
         if hasKey, storedRegion == nil { checkKey(after: .zero) }
         autosave = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.saveLive() }
+            MainActor.assumeIsolated {
+                self?.saveLive()
+                self?.flushUsage()
+            }
         }
     }
 
@@ -222,7 +267,7 @@ final class AppModel {
         transcript.markStarted()
         Task {
             do {
-                try await audio.start(audioSource, microphone: microphone, feedFile: feedFile)
+                try await audio.start(audioSource, microphone: microphone, feedFile: feedFile, separate: splitsBySource)
             } catch {
                 client.disconnect()
                 status = .error(error.localizedDescription)
@@ -254,26 +299,40 @@ final class AppModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
     }
 
-    private func heard(_ data: Data, level: Float) {
+    private func heard(_ data: Data, level: Float, channel: CaptureChannel = .mixed) {
+        // Me / Them: the microphone goes to lane 1, the Mac audio to lane 0. Audio still separated
+        // after the streams went back to one (a setting just changed) goes to every stream.
+        let lane: Int? = splitActive && channel != .mixed ? (channel == .microphone ? 1 : 0) : nil
+        // Two sources hand out twice the chunks: only the Mac audio's drive the meter and the quiet
+        // clock, using the louder of the two, so either voice keeps the session awake.
+        var level = level
+        if channel == .microphone, lane != nil { micLevel = level; return send(data, lane: lane, gate: nil) }
+        if lane != nil { level = max(level, micLevel) }
         self.level = level
+        send(data, lane: lane, gate: level)
+    }
+
+    /// `gate` is the level for the quiet clock, or nil for audio that doesn't drive it.
+    private func send(_ data: Data, lane: Int?, gate level: Float?) {
+        let keep = splitActive ? 2 : 1
         if findingRegion {
             // Held while the key's region is looked up, then sent, like waking from standby.
-            preroll.append(data)
-            if preroll.count > 50 { preroll.removeFirst() }
+            preroll.append((data, lane))
+            if preroll.count > 50 * keep { preroll.removeFirst() }
             return
         }
         guard pausesWhenQuiet else {
-            client.send(audio: data)
+            client.send(audio: data, lane: lane)
             return
         }
         if status == .standby {
-            preroll.append(data)
-            if preroll.count > 20 { preroll.removeFirst() }
-            if quiet.wake(level: level) { wake() }
+            preroll.append((data, lane))
+            if preroll.count > 20 * keep { preroll.removeFirst() }
+            if let level, quiet.wake(level: level) { wake() }
             return
         }
-        client.send(audio: data)
-        if status == .live, quiet.listen(level: level) { standBy() }
+        client.send(audio: data, lane: lane)
+        if let level, status == .live, quiet.listen(level: level) { standBy() }
     }
 
     private func standBy() {
@@ -294,7 +353,7 @@ final class AppModel {
             status = .connecting
             connectStream()
         }
-        preroll.forEach { client.send(audio: $0) }
+        preroll.forEach { client.send(audio: $0.data, lane: $0.lane) }
         preroll.removeAll()
     }
 
@@ -304,6 +363,7 @@ final class AppModel {
         if transcript.hasStarted || transcript.id != selectedID {
             transcript = Transcript()
             store.track(transcript)
+            resetSessionUsage()
         }
         selectedID = transcript.id
         if startNow { start() }
@@ -314,6 +374,7 @@ final class AppModel {
         if t.id != transcript.id {
             endSession()
             transcript = t
+            resetSessionUsage()
         }
         selectedID = t.id
         start()
@@ -330,6 +391,7 @@ final class AppModel {
         renaming = nil
         transcript.clearProvisional()
         store.save(transcript)
+        flushUsage()
     }
 
     func saveLive() {
@@ -373,14 +435,15 @@ final class AppModel {
         show(tr("Copied transcript"))
     }
 
-    private func handle(_ event: SonioxClient.Event) {
+    /// `channel` is set for Me / Them streams.
+    private func handle(_ event: SonioxClient.Event, channel: Channel? = nil) {
         switch event {
         case .connected:
-            transcript.beginStream()
+            transcript.beginStream(channel: channel)
             if status == .connecting || status == .reconnecting { status = .live }
         case .response(let response, let baseMs):
             if response.tokens.contains(where: { !$0.isMarker }) { quiet.heardSpeech() }
-            transcript.ingest(response, baseMs: baseMs)
+            transcript.ingest(response, baseMs: baseMs, channel: channel)
         case .reconnecting:
             if ![.paused, .standby].contains(status) { status = .reconnecting }
         case .failed(let error):
@@ -494,14 +557,28 @@ final class AppModel {
     /// Opens the streams, after a key check in flight has settled the region.
     private func connectStream() {
         guard let pending = keyCheck else {
-            client.connect(apiKey: trimmedKey, region: region, config: sessionConfig)
+            openStreams()
             return
         }
         Task {
             await pending.value
             guard status == .connecting else { return }
-            client.connect(apiKey: trimmedKey, region: region, config: sessionConfig)
+            openStreams()
         }
+    }
+
+    private func openStreams() {
+        let config = sessionConfig
+        splitActive = splitsBySource
+        micLevel = 0
+        client.connect(apiKey: trimmedKey, region: region, config: config,
+                       myVoice: splitActive ? config.forMyVoice(translate: translatesMyVoice) : nil)
+    }
+
+    /// Settings that change both where audio goes and which streams it goes to.
+    private func routingChanged() {
+        streamSettingsChanged()
+        audioSourceChanged()
     }
 
     /// A rejected key may belong to another region: look it up once and reconnect there.
@@ -520,7 +597,7 @@ final class AppModel {
                 AudioLog.write("key belongs to region \(found.rawValue): reconnecting")
                 apply(result, for: key)
                 connectStream()
-                preroll.forEach { client.send(audio: $0) }
+                preroll.forEach { client.send(audio: $0.data, lane: $0.lane) }
                 preroll.removeAll()
                 return
             }
@@ -533,7 +610,7 @@ final class AppModel {
         guard audio.isRunning else { return }
         Task {
             do {
-                try await audio.start(audioSource, microphone: microphone, feedFile: feedFile)
+                try await audio.start(audioSource, microphone: microphone, feedFile: feedFile, separate: splitsBySource)
             } catch {
                 status = .error(error.localizedDescription)
             }
@@ -564,7 +641,56 @@ final class AppModel {
 
     func speakerName(_ id: SpeakerID?, in t: Transcript? = nil) -> String {
         guard let speaker = (t ?? transcript).speaker(id) else { return "" }
-        return speaker.name.isEmpty ? String(format: tr("Speaker %d"), speaker.ordinal) : speaker.name
+        if !speaker.name.isEmpty { return speaker.name }
+        switch Channel(speaker.id) {
+        case .me: return tr("Me")
+        case .them: return tr("Them")
+        case nil: return String(format: tr("Speaker %d"), speaker.ordinal)
+        }
+    }
+
+    // MARK: Pinned question
+
+    /// The latest question to keep above the captions, if pinning is on and the user hasn't closed it.
+    var pinnedQuestion: Line? {
+        guard pinsQuestions, !transcript.lines.isEmpty else { return nil }
+        let hasChannels = transcript.visibleSpeakers.contains { Channel($0.id) != nil }
+        guard let line = transcript.pinnedQuestion(channelsOnly: hasChannels), line.id != dismissedQuestion else { return nil }
+        return line
+    }
+
+    // MARK: Usage
+
+    private func resetSessionUsage() {
+        flushUsage()
+        sessionUsage = UsageTotals()
+    }
+
+    /// Publishes counted usage and adds it to this month's stored total.
+    func flushUsage() {
+        guard pendingUsage.totalMs > 0 else { return }
+        let added = pendingUsage
+        pendingUsage = UsageTotals()
+        sessionUsage = sessionUsage + added
+        let now = Date.now
+        let key = UsageTotals.monthKey(now)
+        // A new month starts from zero; the one just ended is already saved, so it loads as last month.
+        if storedMonth != key {
+            lastMonthUsage = Self.loadUsage(storedMonth)
+            monthUsage = Self.loadUsage(key)
+            storedMonth = key
+        }
+        monthUsage = monthUsage + added
+        if let data = try? JSONEncoder().encode(monthUsage) { defaults.set(data, forKey: "usage.\(key)") }
+    }
+
+    /// The month `monthUsage` counts.
+    @ObservationIgnored private var storedMonth = UsageTotals.monthKey(.now)
+
+    private static func loadUsage(_ month: String) -> UsageTotals {
+        guard let data = UserDefaults.standard.data(forKey: "usage.\(month)"),
+              let totals = try? JSONDecoder().decode(UsageTotals.self, from: data) else { return UsageTotals() }
+        return totals
     }
 
     // MARK: Caption visibility

@@ -5,7 +5,13 @@ enum AudioSource: String, CaseIterable, Codable, Sendable {
     case system, microphone, both
 }
 
-/// Owns the capture devices, mixes them when both are on, and hands out 100 ms s16le chunks.
+/// Which capture a chunk came from. Mixed unless Me / Them keeps the two apart.
+enum CaptureChannel: Sendable {
+    case mixed, system, microphone
+}
+
+/// Owns the capture devices, mixes them when both are on (or keeps them apart for Me / Them),
+/// and hands out 100 ms s16le chunks.
 final class AudioPipeline: @unchecked Sendable {
     private static let chunk = 1_600
     /// When one source stalls this long, stop waiting for it and pad with silence.
@@ -15,6 +21,8 @@ final class AudioPipeline: @unchecked Sendable {
     private var system: [Int16] = []
     private var mic: [Int16] = []
     private var source: AudioSource = .system
+    /// With both sources on, hand out each one on its own instead of mixing.
+    private var separate = false
     private var systemCapture: SystemAudioCapture?
     private var micCapture: MicrophoneCapture?
     private var feed: FileFeed?
@@ -22,14 +30,15 @@ final class AudioPipeline: @unchecked Sendable {
     private var heardSound = false
 
     /// Called on a capture thread.
-    var onChunk: @Sendable (Data, Float) -> Void = { _, _ in }
+    var onChunk: @Sendable (Data, Float, CaptureChannel) -> Void = { _, _, _ in }
 
     var isRunning: Bool { lock.withLock { systemCapture != nil || micCapture != nil || feed != nil } }
 
-    func start(_ source: AudioSource, microphone: String?, feedFile: URL?) async throws {
+    func start(_ source: AudioSource, microphone: String?, feedFile: URL?, separate: Bool = false) async throws {
         stop()
         lock.withLock {
             self.source = source
+            self.separate = separate && source == .both
             system.removeAll()
             mic.removeAll()
             startedAt = .now
@@ -72,8 +81,24 @@ final class AudioPipeline: @unchecked Sendable {
 
     private func push(_ samples: [Int16], fromMic: Bool) {
         var out: [[Int16]] = []
+        var channel = CaptureChannel.mixed
         lock.withLock {
-            if source == .both {
+            if separate {
+                channel = fromMic ? .microphone : .system
+                if fromMic {
+                    mic += samples
+                    while mic.count >= Self.chunk {
+                        out.append(Array(mic.prefix(Self.chunk)))
+                        mic.removeFirst(Self.chunk)
+                    }
+                } else {
+                    system += samples
+                    while system.count >= Self.chunk {
+                        out.append(Array(system.prefix(Self.chunk)))
+                        system.removeFirst(Self.chunk)
+                    }
+                }
+            } else if source == .both {
                 if fromMic { mic += samples } else { system += samples }
                 while true {
                     let ready = min(mic.count, system.count)
@@ -104,7 +129,7 @@ final class AudioPipeline: @unchecked Sendable {
                 lock.withLock { heardSound = true }
                 AudioLog.write(String(format: "first sound after %.2f s", Date.now.timeIntervalSince(lock.withLock { startedAt })))
             }
-            onChunk(Self.encode(chunk), level)
+            onChunk(Self.encode(chunk), level, channel)
         }
     }
 

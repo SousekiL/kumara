@@ -86,6 +86,8 @@ public struct SessionConfig: Sendable, Equatable {
     public var languageB: String
     public var languageC: String
     public var context: String
+    /// Speaker diarization. Off for streams that hear one known person, such as the microphone in Me / Them mode.
+    public var diarize: Bool = true
 
     public init(mode: TranslationMode, source: String?, target: String, languageA: String, languageB: String,
                 languageC: String = "zh", context: String) {
@@ -107,6 +109,21 @@ public struct SessionConfig: Sendable, Equatable {
     /// (or one pair), so three-way runs a one-way stream per language on the same audio.
     public var lanes: Int { mode == .threeWay ? threeWayLanguages.count : 1 }
 
+    /// Whether the stream returns translations, which Soniox bills at a higher rate.
+    public var translates: Bool { mode != .transcribe }
+
+    /// The microphone stream in Me / Them mode: one known speaker, translated only if asked.
+    public func forMyVoice(translate: Bool) -> SessionConfig {
+        var c = self
+        c.diarize = false
+        if !translate {
+            // Keep the language hints so recognition stays as good; just drop the translation.
+            if mode == .twoWay { c.source = nil }
+            c.mode = .transcribe
+        }
+        return c
+    }
+
     public static let model = "stt-rt-v6"
 
     /// Lane 0 carries the transcript; in three-way mode, other lanes only add translations.
@@ -118,7 +135,7 @@ public struct SessionConfig: Sendable, Equatable {
             "sample_rate": 16000,
             "num_channels": 1,
             "enable_endpoint_detection": true,
-            "enable_speaker_diarization": lane == 0,
+            "enable_speaker_diarization": lane == 0 && diarize,
             "enable_language_identification": true,
         ]
         switch mode {

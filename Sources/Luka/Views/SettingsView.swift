@@ -55,6 +55,27 @@ private struct GeneralSettings: View {
                 Text(tr("Change languages from the globe button while listening."))
             }
             Section {
+                Toggle(tr("Label Me and Them by source"), isOn: $model.separatesSpeakers)
+                Toggle(tr("Translate my speech"), isOn: $model.translatesMyVoice)
+                    .disabled(!model.separatesSpeakers)
+                Toggle(tr("Pin the latest question"), isOn: $model.pinsQuestions)
+            } header: {
+                Text(tr("Meetings and interviews"))
+            } footer: {
+                Text(model.separatesSpeakers && !model.splitsBySource
+                     ? tr("Me / Them needs Mac Audio + Microphone, and doesn’t apply in three-way mode.")
+                     : tr("With Mac Audio + Microphone, the microphone is always you and the Mac audio is everyone else. This runs a second Soniox stream, so it costs about twice as much while on."))
+            }
+            Section {
+                LabeledContent(tr("This session")) { Text(model.sessionUsage.summary).monospacedDigit() }
+                LabeledContent(tr("This month")) { Text(model.monthUsage.summary).monospacedDigit() }
+                LabeledContent(tr("Last month")) { Text(model.lastMonthUsage.summary).monospacedDigit() }
+            } header: {
+                Text(tr("Usage"))
+            } footer: {
+                Text(tr("Estimated from Soniox’s published rates: $0.12 per hour transcribed, $0.18 per hour translated, per stream. Your Soniox console has the exact bill."))
+            }
+            Section {
                 Toggle(tr("Pause when it’s quiet"), isOn: $model.pausesWhenQuiet)
             } footer: {
                 Text(tr("After 3 minutes without sound, Luka closes the Soniox stream, which is billed while open, and starts again when sound returns."))

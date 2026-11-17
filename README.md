@@ -92,6 +92,20 @@ Inside Luka: <kbd>⌘</kbd><kbd>E</kbd> names whoever is speaking, <kbd>⌘</kbd
 
 Listen to Mac audio, the microphone, or both. The interface speaks English, 한국어 and 中文.
 
+## Meetings and interviews
+
+Settings › General › **Meetings and interviews**, also in the menu bar:
+
+| Option | What it does |
+| --- | --- |
+| Label Me and Them by source | With **Mac Audio + Microphone**, the microphone is always **Me** and the Mac audio is always **Them**, on two separate Soniox streams. No more guessing voices; costs a second stream while on. |
+| Translate my speech | In Me / Them mode, translate your own words too, or only write them down. |
+| Pin the latest question | Keeps the latest question (from Them, or anyone when Me / Them is off) above the captions while you answer. Click × to unpin. Off by default. |
+
+## Usage
+
+Settings › General › **Usage** shows audio sent to Soniox this session, this month and last month, with an estimated cost ($0.12 per hour transcribed, $0.18 per hour translated, per stream). The menu bar shows this month's total.
+
 ## Privacy
 
 Audio goes straight from your Mac to Soniox over WebSocket; there is no Luka server.

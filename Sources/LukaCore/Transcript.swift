@@ -12,6 +12,20 @@ public struct SpeakerID: Hashable, Sendable, Codable, CustomStringConvertible {
     public var description: String { "\(epoch):\(label)" }
 }
 
+/// Where a stream's audio comes from when the Mac audio and the microphone are kept apart:
+/// the microphone is you, the Mac audio is everyone else.
+public enum Channel: String, Sendable, Codable, CaseIterable {
+    case me, them
+
+    /// Each channel is one fixed speaker, outside every stream's epoch, so it survives reconnects.
+    public var speakerID: SpeakerID { SpeakerID(epoch: -1, label: rawValue) }
+
+    public init?(_ id: SpeakerID?) {
+        guard let id, id.epoch == -1, let c = Channel(rawValue: id.label) else { return nil }
+        self = c
+    }
+}
+
 public struct Speaker: Identifiable, Sendable, Equatable, Codable {
     public let id: SpeakerID
     public let ordinal: Int
@@ -118,7 +132,10 @@ public final class Transcript: Identifiable {
     public private(set) var provisional: Provisional?
     public private(set) var epoch = 0
 
-    @ObservationIgnored private var openLine: Int?
+    /// The line still growing, per channel; "" is the single stream of the normal modes.
+    @ObservationIgnored private var openLines: [String: Int] = [:]
+    /// Live text per channel; `provisional` shows the most recently updated one.
+    @ObservationIgnored private var provisionals: [String: Provisional] = [:]
     @ObservationIgnored public private(set) var nextLineID = 0
     @ObservationIgnored private var nextOrdinal = 1
     @ObservationIgnored private var nextColor = 0
@@ -191,7 +208,9 @@ public final class Transcript: Identifiable {
     // MARK: Ingest
 
     /// `baseMs` is where this stream's audio starts on the audio clock, so its token times line up with other streams.
-    public func ingest(_ response: SonioxResponse, at now: Date = .now, baseMs: Int = 0) {
+    /// `channel` marks a Me / Them stream: its words all belong to that channel's fixed speaker.
+    public func ingest(_ response: SonioxResponse, at now: Date = .now, baseMs: Int = 0, channel: Channel? = nil) {
+        let key = channel?.rawValue ?? ""
         var provisionalText = ""
         var provisionalTranslation = ""
         var provisionalSpeaker: SpeakerID?
@@ -201,15 +220,15 @@ public final class Transcript: Identifiable {
 
         for token in response.tokens {
             if token.isMarker {
-                if token.isFinal { closeOpenLine() }
+                if token.isFinal { closeOpenLine(key) }
                 continue
             }
-            let speaker = token.speaker.map { register(label: $0) }
+            let speaker = channel.map { register(channel: $0) } ?? token.speaker.map { register(label: $0) }
             if token.isFinal {
                 if token.isTranslation {
                     if let i = appendTranslation(token, speaker: speaker) { translated.insert(i) }
                 } else {
-                    appendOriginal(token, speaker: speaker, at: now, baseMs: baseMs)
+                    appendOriginal(token, speaker: speaker, at: now, baseMs: baseMs, key: key)
                 }
             } else if token.isTranslation {
                 provisionalTranslation += token.text
@@ -228,7 +247,12 @@ public final class Transcript: Identifiable {
             ? nil
             : Provisional(speaker: provisionalSpeaker, language: provisionalLanguage,
                           text: trimmed, translation: provisionalTranslation)
-        if next != provisional { provisional = next }
+        if next != provisionals[key] {
+            provisionals[key] = next
+            // Show whoever changed last; when they go quiet, fall back to anyone still talking.
+            let shown = next ?? provisionals.values.first
+            if shown != provisional { provisional = shown }
+        }
         if !lanes.isEmpty { resolveSegments(force: false) }
     }
 
@@ -309,8 +333,16 @@ public final class Transcript: Identifiable {
     }
 
     /// Call when a new Soniox stream starts; its speaker labels mean new people.
-    public func beginStream() {
-        closeOpenLine()
+    /// A Me / Them stream only resets its own channel: its speaker never changes.
+    public func beginStream(channel: Channel? = nil) {
+        if let channel {
+            closeOpenLine(channel.rawValue)
+            provisionals[channel.rawValue] = nil
+            provisional = provisionals.values.first
+            return
+        }
+        closeAllLines()
+        provisionals = [:]
         provisional = nil
         epoch += 1
     }
@@ -318,6 +350,7 @@ public final class Transcript: Identifiable {
     /// Call when streams stop: drops the live text and attaches any translations still waiting.
     public func clearProvisional() {
         provisional = nil
+        provisionals = [:]
         resolveSegments(force: true)
         lanes = [:]
     }
@@ -327,23 +360,24 @@ public final class Transcript: Identifiable {
         speakers = [:]
         speakerOrder = []
         provisional = nil
-        openLine = nil
+        provisionals = [:]
+        openLines = [:]
         nextOrdinal = 1
         nextColor = 0
         lanes = [:]
         epoch += 1
     }
 
-    private func appendOriginal(_ token: SonioxToken, speaker: SpeakerID?, at now: Date, baseMs: Int) {
-        if let i = openLine, speaker == nil || lines[i].speaker == nil || canonical(lines[i].speaker!) == canonical(speaker!) {
+    private func appendOriginal(_ token: SonioxToken, speaker: SpeakerID?, at now: Date, baseMs: Int, key: String = "") {
+        if let i = openLines[key], speaker == nil || lines[i].speaker == nil || canonical(lines[i].speaker!) == canonical(speaker!) {
             if lines[i].speaker == nil { lines[i].speaker = speaker }
         } else {
-            closeOpenLine()
+            closeOpenLine(key)
             lines.append(Line(id: nextLineID, speaker: speaker, language: token.language, startedAt: now))
             nextLineID += 1
-            openLine = lines.count - 1
+            openLines[key] = lines.count - 1
         }
-        let i = openLine!
+        let i = openLines[key]!
         let text = lines[i].original.isEmpty ? String(token.text.drop(while: \.isWhitespace)) : token.text
         lines[i].original += text
         if token.translationStatus == "original" {
@@ -358,7 +392,7 @@ public final class Transcript: Identifiable {
         }
 
         if lines[i].original.count > Self.softLineLimit, let last = text.last, ".?!。？！".contains(last) {
-            closeOpenLine()
+            closeOpenLine(key)
         }
     }
 
@@ -380,9 +414,24 @@ public final class Transcript: Identifiable {
         return i
     }
 
-    private func closeOpenLine() {
-        if let i = openLine { lines[i].isOpen = false }
-        openLine = nil
+    private func closeOpenLine(_ key: String = "") {
+        if let i = openLines[key] { lines[i].isOpen = false }
+        openLines[key] = nil
+    }
+
+    private func closeAllLines() {
+        for key in openLines.keys { closeOpenLine(key) }
+    }
+
+    private func register(channel: Channel) -> SpeakerID {
+        let id = channel.speakerID
+        if speakers[id] == nil {
+            speakers[id] = Speaker(id: id, ordinal: nextOrdinal, name: "", colorIndex: nextColor % Self.paletteSize)
+            speakerOrder.append(id)
+            nextOrdinal += 1
+            nextColor += 1
+        }
+        return id
     }
 
     private func register(label: String) -> SpeakerID {
@@ -453,7 +502,9 @@ public final class Transcript: Identifiable {
 
     public func delete(line id: Int) {
         guard let i = lines.firstIndex(where: { $0.id == id }) else { return }
-        if openLine == i { openLine = nil } else if let o = openLine, o > i { openLine = o - 1 }
+        for (key, o) in openLines {
+            if o == i { openLines[key] = nil } else if o > i { openLines[key] = o - 1 }
+        }
         lines.remove(at: i)
         touch()
     }

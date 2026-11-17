@@ -217,6 +217,7 @@ struct MenuBarContent: View {
         Button(tr("New Transcription") + "  ⌃⌥N") { model.newSession(start: true) }
         Button((model.isListening ? tr("Pause") : tr("Start Listening")) + "  ⌃⌥R") { model.toggleListening() }
         Text(model.status.label)
+        Text(tr("This month") + ": " + model.monthUsage.summary)
         Divider()
         Toggle(tr("Captions"), isOn: Binding(get: { model.captionsVisible }, set: { model.setCaptions($0) }))
         Toggle(tr("Lock Captions"), isOn: Binding(get: { model.locked }, set: { model.lock($0) }))
@@ -227,6 +228,8 @@ struct MenuBarContent: View {
         }
         Divider()
         SourcePicker()
+        Toggle(tr("Label Me and Them by source"), isOn: $model.separatesSpeakers)
+        Toggle(tr("Pin the latest question"), isOn: $model.pinsQuestions)
         Divider()
         Button(tr("Settings…")) {
             NSApp.activate()

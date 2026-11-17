@@ -166,14 +166,22 @@ final class SonioxClient {
 
 /// The Soniox streams one session needs: one normally, one per language in three-way mode.
 /// Every stream hears the same audio; lane 0 carries the transcript.
+/// In Me / Them mode there are two streams on different audio: lane 0 hears the Mac (them),
+/// lane 1 the microphone (me), and each carries its own transcript.
 @MainActor
 final class SonioxStreams {
     private static let maxLanes = 3
     private let clients: [SonioxClient]
     private var active = 1
     private var sentMs = 0
+    /// Me / Them mode: lanes hear different audio.
+    private(set) var split = false
+    /// Whether each lane returns translations, for the usage estimate.
+    private var translates: [Bool] = []
 
     var onEvent: (_ lane: Int, SonioxClient.Event) -> Void = { _, _ in }
+    /// Audio handed to an open stream, in ms, and whether that stream translates. Soniox bills per stream.
+    var onUsage: (_ ms: Int, _ translated: Bool) -> Void = { _, _ in }
     var carryover: () -> String? = { nil } {
         didSet { clients.forEach { $0.carryover = carryover } }
     }
@@ -188,16 +196,41 @@ final class SonioxStreams {
 
     var isOpen: Bool { clients[0].isOpen }
 
-    func connect(apiKey: String, region: SonioxRegion, config: SessionConfig) {
+    /// `myVoice` opens Me / Them mode: `config` for the Mac audio, `myVoice` for the microphone.
+    func connect(apiKey: String, region: SonioxRegion, config: SessionConfig, myVoice: SessionConfig? = nil) {
         disconnect()
+        if let myVoice {
+            split = true
+            active = 2
+            translates = [config.translates, myVoice.translates]
+            clients[0].connect(apiKey: apiKey, region: region, config: config)
+            clients[1].connect(apiKey: apiKey, region: region, config: myVoice)
+            return
+        }
+        split = false
         active = min(config.lanes, Self.maxLanes)
+        translates = Array(repeating: config.translates, count: active)
         for client in clients.prefix(active) { client.connect(apiKey: apiKey, region: region, config: config) }
     }
 
-    func send(audio: Data) {
+    /// `lane` sends to one stream only, in Me / Them mode; otherwise every stream hears the audio.
+    func send(audio: Data, lane: Int? = nil) {
+        let ms = audio.count / 32
+        if split, let lane, clients.indices.contains(lane) {
+            // The Mac audio keeps the clock; both sources run in real time, so they stay in step.
+            if lane == 0 { sentMs += ms }
+            send(audio, ms: ms, to: clients[lane])
+            return
+        }
         // The clock runs whether or not a stream is open, so a stream that reconnects stays aligned.
-        sentMs += audio.count / 32
-        for client in clients.prefix(active) { client.send(audio: audio) }
+        sentMs += ms
+        for client in clients.prefix(active) { send(audio, ms: ms, to: client) }
+    }
+
+    private func send(_ audio: Data, ms: Int, to client: SonioxClient) {
+        guard client.isOpen else { return }
+        client.send(audio: audio)
+        onUsage(ms, translates.indices.contains(client.lane) ? translates[client.lane] : true)
     }
 
     func finalize() {
