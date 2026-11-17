@@ -30,7 +30,7 @@ struct CaptionMetrics: Equatable {
 
     var font: NSFont { LukaFont.ns(family, size: fontSize, weight: .medium) }
     var lineHeight: CGFloat { ceil(fontSize * 1.36) }
-    var originalFontSize: CGFloat { max(11, (fontSize * 0.62).rounded()) }
+    var originalFontSize: CGFloat { max(12, (fontSize * 0.72).rounded()) }
     var originalFont: NSFont { LukaFont.ns(family, size: originalFontSize, weight: .regular) }
     var originalLineHeight: CGFloat { ceil(originalFontSize * 1.4) }
     var labelFontSize: CGFloat { max(10, (fontSize * 0.54).rounded()) }
