@@ -6,9 +6,9 @@ import SwiftUI
 /// the summary and the answers, floating over whatever app is in front, full-screen ones included.
 @MainActor
 final class AssistantDockController: NSObject {
-    static let buttonSize = NSSize(width: 44, height: 92)
+    static let buttonSize = NSSize(width: 36, height: 70)
     static let popupSize = NSSize(width: 380, height: 540)
-    static let edgeInset: CGFloat = 8
+    static let edgeInset: CGFloat = 6
 
     private let model: AppModel
     private let button: CaptionPanel
@@ -169,39 +169,49 @@ private struct DockButton: View {
     let onChanged: () -> Void
     let onEnded: () -> Void
 
+    @State private var hovering = false
+
     var body: some View {
         let live = model.status == .live
-        VStack(spacing: 12) {
-            Image(systemName: model.dockOpen ? "chevron.right" : "text.badge.star")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.primary)
+        VStack(spacing: 9) {
+            Image(systemName: model.dockOpen ? "chevron.right" : "sparkles")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
                 .contentTransition(.symbolEffect(.replace))
-            HStack(alignment: .center, spacing: 4) {
+                .frame(height: 14)
+            // Three dots that stretch with the sound; still and grey when paused.
+            HStack(alignment: .center, spacing: 3) {
                 ForEach(0..<3, id: \.self) { i in
                     Capsule()
-                        .fill(live ? Color.green : Color.secondary)
-                        .frame(width: 4, height: 4 + (live ? CGFloat(model.level) * (i == 1 ? 14 : 9) : 0))
+                        .fill(live ? Color.green : Color.white.opacity(0.35))
+                        .frame(width: 3, height: 3 + (live ? CGFloat(model.level) * (i == 1 ? 9 : 6) : 0))
                 }
             }
-            .frame(width: 24, height: 18)
+            .frame(width: 18, height: 12)
             .animation(.smooth(duration: 0.18), value: model.level)
         }
-        .frame(width: 40, height: 84)
-        .lukaGlass(.regular, in: .capsule)
+        .frame(width: 26, height: 56)
+        // Dark on any background, like the system's own floating controls.
+        .background(.black.opacity(hovering || model.dockOpen ? 0.72 : 0.55), in: .capsule)
+        .background(.ultraThinMaterial, in: .capsule)
+        .overlay { Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.5) }
+        .shadow(color: .black.opacity(0.25), radius: 4, y: 1)
         .overlay(alignment: .topTrailing) {
             if model.dockBadge {
-                Circle().fill(.red).frame(width: 9, height: 9).offset(x: -3, y: 5)
+                Circle().fill(.red).frame(width: 7, height: 7).offset(x: 1, y: -1)
                     .transition(.scale.combined(with: .opacity))
             }
         }
+        .scaleEffect(hovering ? 1.06 : 1)
+        .animation(.smooth(duration: 0.2), value: hovering)
         .animation(.smooth, value: model.dockBadge)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(.rect)
+        .onHover { hovering = $0 }
         .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { _ in onChanged() }
             .onEnded { _ in onEnded() })
         .help(tr("Summary and answers · drag to move"))
-        .environment(\.usesGlass, model.usesGlass)
     }
 }
 
