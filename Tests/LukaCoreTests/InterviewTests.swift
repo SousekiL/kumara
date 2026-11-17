@@ -189,6 +189,8 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let base = LiveSummary(text: "## A\n- x", updatedAt: Date(timeIntervalSince1970: 5), coveredLineID: 1, context: "c", freshLine: 0)
         let same = SummaryPrompt.merge(base, reply: "NONE", coveredLineID: 4)
         #expect(same.text == base.text && same.updatedAt == base.updatedAt && same.coveredLineID == 4)
+        let kept = SummaryPrompt.merge(base, reply: "CONTEXT: newer", coveredLineID: 5, replacing: true)
+        #expect(kept.text == base.text && kept.context == "newer")
         let replaced = SummaryPrompt.merge(base, reply: "CONTEXT: new\n## B\n- y", coveredLineID: 8, replacing: true)
         #expect(replaced.text == "## B\n- y" && replaced.context == "new" && replaced.freshLine == nil)
     }

@@ -371,9 +371,9 @@ struct SessionView: View {
             }
             .help(tr("Settings…") + "  ⌘,")
             Toggle(isOn: Binding(get: { model.summarizer.panelShown }, set: { model.summarizer.panelShown = $0 }).animation(.smooth)) {
-                Label(tr("Summary"), systemImage: "sidebar.trailing")
+                Label(tr("Assistant"), systemImage: "sidebar.trailing")
             }
-            .help(tr("Live Summary"))
+            .help(tr("Summary and Answers"))
         }
     }
 

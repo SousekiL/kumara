@@ -199,6 +199,8 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Summary and Answers": "总结和回答",
+        "Unpin Question": "取消固定问题",
         "Not answering in Lecture mode": "讲座模式下不回答问题",
         "Technical": "技术",
         "Case": "案例",

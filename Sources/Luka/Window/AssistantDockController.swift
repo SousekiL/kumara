@@ -91,40 +91,44 @@ final class AssistantDockController: NSObject {
         }
     }
 
+    private var buttonShown = false
+    private var popupShown = false
+
     private func apply() {
         let wanted = model.showsDockButton && model.status != .idle
-        if wanted {
-            if !button.isVisible { fade(button, in: true) }
-        } else {
-            if button.isVisible { fade(button, in: false) }
-            if model.dockOpen { model.dockOpen = false }
+        if wanted != buttonShown {
+            buttonShown = wanted
+            fade(button, in: wanted)
         }
+        if !wanted, model.dockOpen { model.dockOpen = false }
         let open = wanted && model.dockOpen
         if open {
             popup.setFrame(popupFrame(), display: true)
-            if !popup.isVisible { fade(popup, in: true) }
             if model.dockBadge { model.dockBadge = false }
-        } else if popup.isVisible {
-            fade(popup, in: false)
+        }
+        if open != popupShown {
+            popupShown = open
+            fade(popup, in: open)
         }
     }
 
     private func fade(_ panel: NSPanel, in showing: Bool) {
         if showing {
-            panel.alphaValue = 0
+            if !panel.isVisible { panel.alphaValue = 0 }
             panel.orderFrontRegardless()
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
+                ctx.duration = 0.18
                 panel.animator().alphaValue = 1
             }
         } else {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.2
+                ctx.duration = 0.18
                 panel.animator().alphaValue = 0
             } completionHandler: {
                 MainActor.assumeIsolated {
-                    // Shown again meanwhile: leave it.
-                    if panel.alphaValue == 0 { panel.orderOut(nil) }
+                    // Shown again while fading out: leave it up.
+                    let stillHidden = panel === self.button ? !self.buttonShown : !self.popupShown
+                    if stillHidden { panel.orderOut(nil) }
                 }
             }
         }

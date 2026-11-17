@@ -2,8 +2,8 @@ import Foundation
 import LukaCore
 
 /// Keeps the live session's summary up to date with a language model of the user's choice,
-/// on its own API key. One request at a time: small incremental updates as talk comes in,
-/// and every few updates a rewrite from the transcript, so earlier points get revised.
+/// on its own API key, one request at a time: running notes appended as talk comes in
+/// (Meeting, Interview), or an overview rewritten as the talk goes on (Lecture).
 @MainActor
 @Observable
 final class Summarizer {
@@ -24,7 +24,7 @@ final class Summarizer {
     /// The kind of conversation: sets how the summary is kept and how readily questions are answered.
     var mode: AssistantMode { didSet { defaults.set(mode.rawValue, forKey: "assistant.mode") } }
     var fontSize: Double { didSet { defaults.set(fontSize, forKey: "summary.fontSize") } }
-    static let fontRange = 10.0...22.0
+    static let fontRange = 11.0...22.0
     /// The summary column in the transcript window.
     var panelShown: Bool { didSet { defaults.set(panelShown, forKey: "summary.panelShown") } }
 
@@ -46,7 +46,8 @@ final class Summarizer {
         detail = SummaryDetail(rawValue: d.string(forKey: "summary.detail") ?? "") ?? .concise
         instructions = d.string(forKey: "summary.instructions") ?? ""
         mode = AssistantMode(rawValue: d.string(forKey: "assistant.mode") ?? "") ?? .meeting
-        fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 13
+        // 14 pt reads comfortably at arm's length in a side column; 13 is the system's body size.
+        fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 14
         // Until the user decides, the column shows only when there is something to put in it.
         panelShown = d.object(forKey: "summary.panelShown") as? Bool
             ?? (d.bool(forKey: "summary.enabled") || d.bool(forKey: "answers.enabled"))

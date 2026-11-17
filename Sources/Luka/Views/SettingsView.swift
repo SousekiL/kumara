@@ -323,13 +323,21 @@ private struct SummarySettings: View {
     @Environment(AppModel.self) private var model
 
     /// Common services, so nobody has to look up a base URL. The model name is only a starting point.
-    private static let presets: [(name: String, provider: SummaryProvider, baseURL: String, model: String)] = [
-        ("OpenAI", .openAI, "", "gpt-4.1-mini"),
-        ("Claude (Anthropic)", .anthropic, "", "claude-haiku-4-5"),
-        ("DeepSeek", .openAI, "https://api.deepseek.com/v1", "deepseek-chat"),
-        ("Qwen (DashScope)", .openAI, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
-        ("OpenRouter", .openAI, "https://openrouter.ai/api/v1", ""),
-        ("Ollama", .openAI, "http://localhost:11434/v1", ""),
+    private struct Preset: Identifiable {
+        let name: String
+        let provider: SummaryProvider
+        let baseURL: String
+        let model: String
+        var id: String { name }
+    }
+
+    private static let presets: [Preset] = [
+        Preset(name: "OpenAI", provider: .openAI, baseURL: "", model: "gpt-4.1-mini"),
+        Preset(name: "Claude (Anthropic)", provider: .anthropic, baseURL: "", model: "claude-haiku-4-5"),
+        Preset(name: "DeepSeek", provider: .openAI, baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat"),
+        Preset(name: "Qwen (DashScope)", provider: .openAI, baseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", model: "qwen-plus"),
+        Preset(name: "OpenRouter", provider: .openAI, baseURL: "https://openrouter.ai/api/v1", model: ""),
+        Preset(name: "Ollama", provider: .openAI, baseURL: "http://localhost:11434/v1", model: ""),
     ]
 
     var body: some View {
@@ -339,7 +347,7 @@ private struct SummarySettings: View {
             Section {
                 LabeledContent(tr("Service")) {
                     Menu(tr("Choose a preset")) {
-                        ForEach(Self.presets, id: \.name) { preset in
+                        ForEach(Self.presets) { preset in
                             Button(preset.name) {
                                 summarizer.provider = preset.provider
                                 summarizer.baseURL = preset.baseURL

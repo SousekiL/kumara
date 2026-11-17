@@ -37,8 +37,9 @@ struct SummaryPanel: View {
                 .fixedSize()
                 .help(summarizer.mode.explanation)
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, Self.inset)
             .padding(.top, 10)
+            .padding(.bottom, 2)
             if answerer.panelShowsAnswers {
                 bar { answersStatus } actions: {
                     ProgressView().controlSize(.small).opacity(answerer.working ? 1 : 0)
@@ -48,9 +49,10 @@ struct SummaryPanel: View {
                 }
                 Divider()
                 ScrollView {
-                    answers
+                    VStack(alignment: .leading, spacing: 0) { answers }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
+                        .padding(.horizontal, Self.inset)
+                        .padding(.vertical, 14)
                 }
                 .onChange(of: transcript.answers.count, initial: true) { seenAnswers = transcript.answers.count }
             } else {
@@ -70,8 +72,11 @@ struct SummaryPanel: View {
                 ScrollView {
                     summary
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
+                        .padding(.horizontal, Self.inset)
+                        .padding(.vertical, 14)
                 }
+                // Opening a session shows where the notes end; an overview reads from the top.
+                .defaultScrollAnchor(summarizer.mode.rewritesSummary ? .top : .bottom, for: .initialOffset)
                 // Notes grow at the bottom: follow them, like the transcript, unless the reader has scrolled up.
                 .scrollPosition($notesPosition)
                 .onScrollGeometryChange(for: Bool.self) { geo in
@@ -92,6 +97,9 @@ struct SummaryPanel: View {
         .onChange(of: transcript.id) { seenAnswers = transcript.answers.count }
     }
 
+    /// Side margin for everything in the column, so headers and text share one left edge.
+    static let inset: CGFloat = 16
+
     /// One row under the tabs: what this is and how fresh, with its actions on the right.
     private func bar(@ViewBuilder status: () -> some View, @ViewBuilder actions: () -> some View) -> some View {
         HStack(alignment: .center, spacing: 10) {
@@ -103,7 +111,7 @@ struct SummaryPanel: View {
             actions()
                 .buttonStyle(.borderless)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Self.inset)
         .frame(height: 30)
         .padding(.vertical, 4)
     }
@@ -143,15 +151,17 @@ struct SummaryPanel: View {
 
     @ViewBuilder private var summary: some View {
         if let summary = transcript.summary {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: summarizer.fontSize * 0.9) {
                 if let context = summary.context, !context.isEmpty {
                     Text(context)
-                        .font(LukaFont.font(model.fontFamily, size: max(10, summarizer.fontSize - 1)))
+                        .font(LukaFont.font(model.fontFamily, size: max(11, summarizer.fontSize - 1)))
+                        .lineSpacing(summarizer.fontSize * 0.25)
                         .foregroundStyle(.secondary)
-                        .padding(.vertical, 6)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 8)
                         .padding(.horizontal, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+                        .background(.quaternary.opacity(0.45), in: .rect(cornerRadius: 8))
                 }
                 // While listening, the lines just added stand out and the rest steps back.
                 SummaryText(markdown: summary.text, fontSize: summarizer.fontSize, family: model.fontFamily,
@@ -210,12 +220,12 @@ struct SummaryPanel: View {
         if !transcript.answers.isEmpty {
             // Newest first and at full strength; earlier ones step back.
             let newest = transcript.answers.last?.id
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 ForEach(transcript.answers.reversed()) { item in
                     AnswerCard(item: item, fontSize: summarizer.fontSize, family: model.fontFamily) {
                         copy(item.answer, notice: tr("Copied answer"))
                     }
-                    .opacity(item.id == newest ? 1 : 0.6)
+                    .opacity(item.id == newest ? 1 : 0.7)
                     if item.id != transcript.answers.first?.id { Divider() }
                 }
             }
@@ -241,6 +251,8 @@ struct SummaryPanel: View {
 }
 
 /// Renders the model's small Markdown subset: "## " headings, "- " bullets, inline **bold**.
+/// Spacing scales with the text size: about 1.5 line height for reading (more room helps Chinese),
+/// clear gaps between bullets, and headings set off above more than below so they belong to what follows.
 struct SummaryText: View {
     let markdown: String
     let fontSize: Double
@@ -248,28 +260,54 @@ struct SummaryText: View {
     /// The first line of the latest addition; earlier lines are dimmed. Nil shows everything alike.
     var freshFrom: Int? = nil
 
+    private enum Kind { case heading, bullet, text }
+
+    private var lines: [(kind: Kind, text: String)] {
+        markdown.split(separator: "\n", omittingEmptySubsequences: true).map { raw in
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#") {
+                return (.heading, String(line.drop(while: { $0 == "#" })).trimmingCharacters(in: .whitespaces))
+            }
+            for marker in ["- ", "* ", "• "] where line.hasPrefix(marker) {
+                return (.bullet, String(line.dropFirst(marker.count)))
+            }
+            return (.text, line)
+        }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            ForEach(Array(markdown.split(separator: "\n", omittingEmptySubsequences: true).enumerated()), id: \.offset) { index, raw in
-                let line = raw.trimmingCharacters(in: .whitespaces)
+        let lines = lines
+        let leading = fontSize * 0.42
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                 let old = freshFrom.map { index < $0 } ?? false
                 Group {
-                if line.hasPrefix("#") {
-                    Text(inline(String(line.drop(while: { $0 == "#" })).trimmingCharacters(in: .whitespaces)))
-                        .font(LukaFont.font(family, size: fontSize, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 6)
-                } else if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("• ") {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(verbatim: "•").foregroundStyle(.secondary)
-                        Text(inline(String(line.dropFirst(2))))
+                    switch line.kind {
+                    case .heading:
+                        Text(inline(line.text))
+                            .font(LukaFont.font(family, size: fontSize + 1, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .padding(.top, index == 0 ? 0 : fontSize * 0.9)
+                            .padding(.bottom, fontSize * 0.25)
+                    case .bullet:
+                        // A hanging indent: wrapped lines line up with the text, not the dot.
+                        HStack(alignment: .firstTextBaseline, spacing: 0) {
+                            Text(verbatim: "•")
+                                .foregroundStyle(.tertiary)
+                                .frame(width: fontSize * 0.95, alignment: .leading)
+                            Text(inline(line.text))
+                                .lineSpacing(leading)
+                        }
+                        .font(LukaFont.font(family, size: fontSize))
+                    case .text:
+                        Text(inline(line.text))
+                            .font(LukaFont.font(family, size: fontSize))
+                            .lineSpacing(leading)
                     }
-                    .font(LukaFont.font(family, size: fontSize))
-                } else {
-                    Text(inline(line)).font(LukaFont.font(family, size: fontSize))
                 }
-                }
-                .opacity(old ? 0.62 : 1)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, index == lines.count - 1 ? 0 : fontSize * 0.45)
+                .opacity(old ? 0.7 : 1)
             }
         }
         .textSelection(.enabled)
@@ -289,11 +327,13 @@ private struct AnswerCard: View {
     @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: fontSize * 0.55) {
             Text(Questions.lastSentence(item.question) ?? item.question)
-                .font(LukaFont.font(family, size: max(10, fontSize - 1), weight: .medium))
+                .font(LukaFont.font(family, size: max(11, fontSize - 1), weight: .medium))
                 .foregroundStyle(.secondary)
+                .lineSpacing(fontSize * 0.2)
                 .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
                 .help(item.question)
             SummaryText(markdown: item.answer, fontSize: fontSize, family: family)
             HStack(spacing: 6) {
@@ -313,8 +353,9 @@ private struct AnswerCard: View {
                     .help(tr("Copy Answer"))
                     .opacity(hovering ? 1 : 0)
             }
-            .font(.caption2)
+            .font(.caption)
             .foregroundStyle(.tertiary)
+            .padding(.top, 2)
         }
         .contentShape(.rect)
         .onHover { hovering = $0 }

@@ -304,6 +304,11 @@ public enum SummaryPrompt {
                 added.append(line)
             }
         }
+        // Nothing new (a NONE, or only a CONTEXT line) keeps the notes as they are, whatever the mode.
+        if added.isEmpty {
+            return LiveSummary(text: current?.text ?? "", updatedAt: current?.updatedAt ?? now, coveredLineID: coveredLineID,
+                               context: context, freshLine: current?.freshLine)
+        }
         let old = replacing ? "" : (current?.text ?? "")
         let oldLines = old.split(separator: "\n", omittingEmptySubsequences: true)
         // A heading that repeats the current topic isn't a new topic.

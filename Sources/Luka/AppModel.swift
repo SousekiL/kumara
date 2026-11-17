@@ -115,10 +115,18 @@ final class AppModel {
     private(set) var accountBalance: SonioxAccount.Balance?
     private(set) var accountError: String?
     private(set) var accountCheckedAt: Date?
+    @ObservationIgnored private var orgKeyCheck: Task<Void, Never>?
     var orgKey: String {
         didSet {
             SecretStore.save(orgKey, slot: "org")
-            if orgKey != oldValue { accountBalance = nil; refreshAccount() }
+            guard orgKey != oldValue else { return }
+            accountBalance = nil
+            // Wait for typing or pasting to settle instead of asking Soniox on every keystroke.
+            orgKeyCheck?.cancel()
+            orgKeyCheck = Task {
+                try? await Task.sleep(for: .seconds(1))
+                if !Task.isCancelled { refreshAccount() }
+            }
         }
     }
     /// Core Audio UID of the chosen input device; nil follows the system default.

@@ -423,6 +423,10 @@ struct CaptionMenu: View {
         Divider()
         CaptionAppearanceMenu()
         Divider()
+        // The pin's × sits where the hover toolbar appears, so it can be hard to reach.
+        if let question = model.pinnedQuestion {
+            Button(tr("Unpin Question")) { model.dismissedQuestion = question.id }
+        }
         Button(tr("Lock Captions")) { model.lock(true) }
         Button(tr("Show Transcript")) { model.openTranscript() }
         Button(tr("Hide Captions")) { model.setCaptions(false) }
