@@ -11,7 +11,8 @@ extension Transcript {
             let body = summary.text.split(separator: "\n", omittingEmptySubsequences: false)
                 .map { $0.hasPrefix("## ") ? "###" + $0.dropFirst(2) : String($0) }
                 .joined(separator: "\n")
-            out += "\n## Summary\n\n\(body)\n\n---\n"
+            let context = summary.context.map { "_\($0)_\n\n" } ?? ""
+            out += "\n## Summary\n\n\(context)\(body)\n\n---\n"
         }
         for turn in turns {
             let who = turn.speaker.map(name) ?? "—"

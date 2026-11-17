@@ -159,11 +159,46 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
     }
 
     @Test func updatePolicy() {
-        #expect(!SummaryPrompt.shouldUpdate(newCharacters: 0, sinceUpdate: 500, sinceLastSpeech: 500))
-        #expect(SummaryPrompt.shouldUpdate(newCharacters: 600, sinceUpdate: 1, sinceLastSpeech: 0))
-        #expect(SummaryPrompt.shouldUpdate(newCharacters: 120, sinceUpdate: 20, sinceLastSpeech: 8))
-        #expect(!SummaryPrompt.shouldUpdate(newCharacters: 120, sinceUpdate: 20, sinceLastSpeech: 2))
-        #expect(SummaryPrompt.shouldUpdate(newCharacters: 10, sinceUpdate: 95, sinceLastSpeech: 0))
+        #expect(!SummaryPrompt.shouldUpdate(newWeight: 10, sinceUpdate: 500, sinceLastSpeech: 500))
+        #expect(SummaryPrompt.shouldUpdate(newWeight: 400, sinceUpdate: 1, sinceLastSpeech: 0))
+        #expect(SummaryPrompt.shouldUpdate(newWeight: 120, sinceUpdate: 5, sinceLastSpeech: 4))
+        #expect(!SummaryPrompt.shouldUpdate(newWeight: 120, sinceUpdate: 5, sinceLastSpeech: 1))
+        #expect(SummaryPrompt.shouldUpdate(newWeight: 50, sinceUpdate: 35, sinceLastSpeech: 0))
+        #expect(SummaryPrompt.weight("abc") == 3 && SummaryPrompt.weight("你好") == 4)
+    }
+
+    @Test func repliesAreAppendedAndEarlierNotesStay() {
+        let first = SummaryPrompt.merge(nil, reply: "CONTEXT: Likely a budget meeting.\n## Budget\n- Q3 spend was $2M.", coveredLineID: 3)
+        #expect(first.context == "Likely a budget meeting.")
+        #expect(first.text == "## Budget\n- Q3 spend was $2M.")
+        #expect(first.freshLine == 0)
+
+        let second = SummaryPrompt.merge(first, reply: "- **Decision:** freeze hiring.", coveredLineID: 6)
+        #expect(second.text == "## Budget\n- Q3 spend was $2M.\n- **Decision:** freeze hiring.")
+        #expect(second.freshLine == 2 && second.context == first.context && second.coveredLineID == 6)
+
+        // A repeated heading continues the topic; a new one starts a section.
+        let third = SummaryPrompt.merge(second, reply: "## budget\n- Travel is cut.", coveredLineID: 7)
+        #expect(third.text.hasSuffix("freeze hiring.\n- Travel is cut."))
+        let fourth = SummaryPrompt.merge(third, reply: "```\n## Hiring\n- Two offers are out.\n```", coveredLineID: 9)
+        #expect(fourth.text.hasSuffix("- Travel is cut.\n\n## Hiring\n- Two offers are out."))
+        #expect(fourth.text.hasPrefix(third.text))
+    }
+
+    @Test func nothingToAddOnlyMovesTheMarker() {
+        let base = LiveSummary(text: "## A\n- x", updatedAt: Date(timeIntervalSince1970: 5), coveredLineID: 1, context: "c", freshLine: 0)
+        let same = SummaryPrompt.merge(base, reply: "NONE", coveredLineID: 4)
+        #expect(same.text == base.text && same.updatedAt == base.updatedAt && same.coveredLineID == 4)
+        let replaced = SummaryPrompt.merge(base, reply: "CONTEXT: new\n## B\n- y", coveredLineID: 8, replacing: true)
+        #expect(replaced.text == "## B\n- y" && replaced.context == "new" && replaced.freshLine == nil)
+    }
+
+    @Test func appendPromptCarriesOnlyTheNotesTail() {
+        let long = (["## Old topic"] + (0..<60).map { "- Earlier point number \($0) with some words." } + ["## Current", "- Latest point."]).joined(separator: "\n")
+        let prompt = SummaryPrompt.append(current: LiveSummary(text: long, updatedAt: .now, coveredLineID: 1), newTranscript: "A: hi")
+        #expect(prompt.contains("## Current\n- Latest point."))
+        #expect(!prompt.contains("number 3 "))
+        #expect(SummaryPrompt.append(current: nil, newTranscript: "A: hi").contains("The notes are empty"))
     }
 
     @Test func summaryTextSkipsCoveredAndOpenLines() {
@@ -218,9 +253,8 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
 @Suite struct PromptTests {
     @Test func promptCarriesLimitsLanguageAndExtras() {
         let p = SummaryPrompt.system(language: "Simplified Chinese", detail: .concise, extra: " List numbers. ")
-        #expect(p.contains("Write it in Simplified Chinese"))
-        #expect(p.contains("at most 4 bullets"))
-        #expect(p.contains("At most 7 bullets in total"))
+        #expect(p.contains("Write in Simplified Chinese"))
+        #expect(p.contains("Usually 1 or 2 bullets per update"))
         #expect(p.hasSuffix("List numbers."))
         #expect(!SummaryPrompt.system(language: "English").contains("reader's own instructions"))
     }

@@ -389,7 +389,7 @@ private struct SummarySettings: View {
             } header: {
                 Text(tr("Summary"))
             } footer: {
-                Text(tr("Keeps the main points of the conversation beside the transcript, and revises earlier points as things develop."))
+                Text(tr("Running notes beside the transcript: new points are added at the end every few sentences, in the order they were said, and what is already written stays put."))
             }
             .onChange(of: summarizer.enabled) {
                 if summarizer.enabled { summarizer.panelShown = true }

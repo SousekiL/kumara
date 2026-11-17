@@ -7,6 +7,8 @@ struct SummaryPanel: View {
     let transcript: Transcript
     /// How many answers the user has had in view; the rest count as new on the tab.
     @State private var seenAnswers = 0
+    @State private var notesPosition = ScrollPosition(edge: .top)
+    @State private var followingNotes = true
 
     private var summarizer: Summarizer { model.summarizer }
     private var answerer: Answerer { model.answerer }
@@ -46,7 +48,7 @@ struct SummaryPanel: View {
                 bar(title: tr("Live Summary")) { summaryStatus } actions: {
                     if summarizer.working { ProgressView().controlSize(.small) }
                     Button { model.refreshSummary(transcript) } label: { Image(systemName: "arrow.clockwise") }
-                        .help(tr("Rewrite from the whole transcript"))
+                        .help(tr("Write the notes again from the whole transcript"))
                         .disabled(!summarizer.isConfigured || summarizer.working || transcript.lines.isEmpty)
                     Button { copy(transcript.summary?.text, notice: tr("Copied summary")) } label: { Image(systemName: "doc.on.doc") }
                         .help(tr("Copy Summary"))
@@ -57,6 +59,17 @@ struct SummaryPanel: View {
                     summary
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14)
+                }
+                // Notes grow at the bottom: follow them, like the transcript, unless the reader has scrolled up.
+                .scrollPosition($notesPosition)
+                .onScrollGeometryChange(for: Bool.self) { geo in
+                    geo.contentOffset.y + geo.containerSize.height >= geo.contentSize.height - 60
+                } action: { _, atBottom in
+                    followingNotes = atBottom
+                }
+                .onChange(of: transcript.summary?.text) {
+                    guard followingNotes else { return }
+                    withAnimation(.smooth(duration: 0.3)) { notesPosition.scrollTo(edge: .bottom) }
                 }
             }
         }
@@ -110,7 +123,7 @@ struct SummaryPanel: View {
                 Text(String(format: tr("Updated %@"), Self.ago(summary.updatedAt, now: context.date)))
             }
         } else if summarizer.enabled && summarizer.isConfigured {
-            Text(tr("Waiting for enough conversation…"))
+            Text(tr("Listening for the first few sentences…"))
         } else {
             Text(verbatim: " ")
         }
@@ -118,14 +131,25 @@ struct SummaryPanel: View {
 
     @ViewBuilder private var summary: some View {
         if let summary = transcript.summary {
-            SummaryText(markdown: summary.text, fontSize: summarizer.fontSize, family: model.fontFamily)
-                .id(summary.updatedAt)
-                .transition(.opacity)
-                .animation(.smooth, value: summary.updatedAt)
+            VStack(alignment: .leading, spacing: 10) {
+                if let context = summary.context, !context.isEmpty {
+                    Text(context)
+                        .font(LukaFont.font(model.fontFamily, size: max(10, summarizer.fontSize - 1)))
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+                }
+                // While listening, the lines just added stand out and the rest steps back.
+                SummaryText(markdown: summary.text, fontSize: summarizer.fontSize, family: model.fontFamily,
+                            freshFrom: model.isLive(transcript) && model.isListening ? summary.freshLine : nil)
+                    .animation(.smooth, value: summary.text)
+            }
         } else if !summarizer.isConfigured || !summarizer.enabled {
             setupHint(tr("Turn on the live summary and pick a model in Settings › Assistant."))
         } else {
-            Text(tr("The summary appears here once the conversation gets going."))
+            Text(tr("Notes appear here a few sentences in, and keep growing as the conversation goes on."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -182,11 +206,15 @@ struct SummaryText: View {
     let markdown: String
     let fontSize: Double
     let family: String
+    /// The first line of the latest addition; earlier lines are dimmed. Nil shows everything alike.
+    var freshFrom: Int? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            ForEach(Array(markdown.split(separator: "\n", omittingEmptySubsequences: true).enumerated()), id: \.offset) { _, raw in
+            ForEach(Array(markdown.split(separator: "\n", omittingEmptySubsequences: true).enumerated()), id: \.offset) { index, raw in
                 let line = raw.trimmingCharacters(in: .whitespaces)
+                let old = freshFrom.map { index < $0 } ?? false
+                Group {
                 if line.hasPrefix("#") {
                     Text(inline(String(line.drop(while: { $0 == "#" })).trimmingCharacters(in: .whitespaces)))
                         .font(LukaFont.font(family, size: fontSize, weight: .semibold))
@@ -201,6 +229,9 @@ struct SummaryText: View {
                 } else {
                     Text(inline(line)).font(LukaFont.font(family, size: fontSize))
                 }
+                }
+                .opacity(old ? 0.62 : 1)
+                .transition(.opacity)
             }
         }
         .textSelection(.enabled)

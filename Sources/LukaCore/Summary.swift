@@ -3,18 +3,24 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// A running summary of a session, kept up to date by a language model while listening.
+/// Running notes of a session, added to by a language model while listening.
 public struct LiveSummary: Codable, Sendable, Equatable {
-    /// Markdown: `## ` section headings and `- ` bullets.
+    /// Markdown: `## ` topic headings and `- ` bullets, in the order things were said.
     public var text: String
     public var updatedAt: Date
     /// The last line the summary has read; later lines are new to it.
     public var coveredLineID: Int
+    /// One line on what kind of conversation this is; shown above the notes.
+    public var context: String?
+    /// How many lines the notes had before the latest update; the lines from there on are new.
+    public var freshLine: Int?
 
-    public init(text: String, updatedAt: Date, coveredLineID: Int) {
+    public init(text: String, updatedAt: Date, coveredLineID: Int, context: String? = nil, freshLine: Int? = nil) {
         self.text = text
         self.updatedAt = updatedAt
         self.coveredLineID = coveredLineID
+        self.context = context
+        self.freshLine = freshLine
     }
 }
 
@@ -22,11 +28,12 @@ public struct LiveSummary: Codable, Sendable, Equatable {
 public enum SummaryDetail: String, Codable, CaseIterable, Sendable {
     case concise, standard, detailed
 
-    var limits: (keyPoints: Int, total: Int, words: Int) {
+    /// Bullets per update, and words per bullet.
+    var limits: (bullets: String, words: Int) {
         switch self {
-        case .concise: (4, 7, 18)
-        case .standard: (6, 10, 24)
-        case .detailed: (10, 16, 30)
+        case .concise: ("1 or 2", 20)
+        case .standard: ("2 to 4", 26)
+        case .detailed: ("3 to 6", 32)
         }
     }
 }
@@ -135,46 +142,43 @@ public struct SummaryEndpoint: Sendable, Equatable {
     }
 }
 
-/// What to send the model, and when.
+/// What to send the model, and when. The summary is running notes: each update adds lines
+/// at the end for what was just said, and what is already written stays as it is.
 public enum SummaryPrompt {
-    /// Characters of new transcript sent in one incremental update, at most.
-    public static let incrementalLimit = 8_000
-    /// Characters of transcript a full rewrite reads; older talk is carried by the current summary.
-    public static let rewriteLimit = 24_000
-    /// After this many incremental updates, the next one rereads the transcript and rewrites from scratch.
-    public static let rewriteEvery = 6
+    /// Characters of new transcript sent in one update, at most.
+    public static let incrementalLimit = 12_000
+    /// Characters of transcript a full rewrite (the refresh button) reads.
+    public static let rewriteLimit = 60_000
+    /// Characters of the notes' end sent along, so the model continues them instead of repeating them.
+    public static let tailLimit = 700
 
     public static func system(language: String, detail: SummaryDetail = .concise, extra: String = "") -> String {
         let limits = detail.limits
         var prompt = """
-        You maintain a live briefing of a conversation that is being transcribed in real time (a meeting, an interview, a call, a lecture, a podcast or a video). The reader glances at it to learn what matters so far, and may have missed the conversation entirely. Write it in \(language), headings included.
+        You keep running notes of a conversation that is being transcribed live (a meeting, an interview, a call, a lecture, a podcast or a video). The reader follows the notes as they grow and reads only the newest lines to keep up, so what is already written stays exactly as it is. Write in \(language).
 
-        What to write
-        - Substance, not a record of the talk. State the topics, claims, facts, numbers, conclusions, and disagreements with their reasons. A bullet states a point; it never narrates who said what in what order.
-        - Name a person only when who said it changes the meaning: who owns a decision or a task, who committed to something, who disagrees with whom, who must answer a question. Never write placeholder labels such as "Speaker 1". If someone has no real name, leave them out, or use their role ("the host", "the interviewer", "the candidate") when the transcript makes the role clear.
-        - Leave out greetings, small talk, banter, filler, repetition and asides. If a joke carries a real point, state the point plainly. Ask of each bullet: would someone who missed the conversation need this? If not, drop it.
-        - Merge related remarks into one bullet. Prefer fewer, denser bullets to many thin ones.
+        Each time you get the last lines of the notes so far and the new part of the transcript. Reply with only the lines to add at the end. Never repeat, rephrase or rewrite what the notes already say.
 
-        Context line
-        - Open with one line under "## Context": what kind of conversation this is, what it is about, and who is taking part if that is evident. Example: "Political talk show; two hosts on a local election scandal."
-        - Infer only from clear evidence in the transcript, and mark what you inferred with a word like "likely" or "appears". When the evidence is thin, state only what is certain, or leave the line out. Never invent names, titles, employers or relationships, and never guess at anyone's private circumstances.
-        - Revise the line as more evidence arrives.
+        What to add
+        - Substance, in the order it was said: topics, claims, facts, numbers, conclusions, and disagreements with their reasons. A bullet states a point; it doesn't narrate who said what.
+        - Name a person only when who said it changes the meaning: who owns a decision or task, who committed to something, who disagrees with whom. Never write placeholder labels such as "Speaker 1"; leave the person out, or use their role ("the host", "the interviewer") when the transcript makes it clear.
+        - Leave out greetings, small talk, banter, filler and repetition. If a joke carries a real point, state the point.
+        - Usually \(limits.bullets) bullets per update; fewer when little was said. Each bullet is one sentence of at most \(limits.words) words (about \(limits.words * 2) characters in Chinese, Japanese or Korean) that makes sense on its own, without the earlier notes.
+        - Start a bullet with a bold label when it is one of these, translated into the notes' language: "**Decision:**" for something agreed, "**Action:**" for a task (with its owner when named), "**Question:**" for a question left open.
+        - If the new part corrects or reverses something noted earlier, add a bullet saying so. Don't restate the earlier line.
+        - If the new part adds nothing worth noting, reply with exactly NONE.
 
-        Format
-        Markdown with "## " headings and "- " bullets only. Use these sections in this order, each only when it has content:
-        ## Context: one plain line, no bullet
-        ## Key points: at most \(limits.keyPoints) bullets, most important first
-        ## Decisions: what was agreed or settled
-        ## Open questions and next steps: unresolved questions, and tasks with their owner when one was named
-        If the speakers are "Me" and "Them", add after Key points:
-        ## What they want: at most 3 bullets on what Them asked about or cares about most. Refer to Me as "you".
-        At most \(limits.total) bullets in total. Each bullet is one sentence of at most \(limits.words) words (about \(limits.words * 2) characters in Chinese, Japanese or Korean).
+        Topics
+        - Notes are grouped under "## " headings of a few words each. While the conversation stays on the topic of the last heading, reply with bullets only. When it moves to a new topic, start your reply with a new "## " heading. Don't open a heading for every update.
+
+        Context
+        - Once it is clear what kind of conversation this is, what it is about and, if evident, who is taking part, begin your reply with one line "CONTEXT: …" saying so in one sentence. Send it again only if that understanding changes in a way that matters.
+        - Infer only from clear evidence in the transcript and mark what you inferred with a word like "likely" or "appears". Never invent names, titles, employers or relationships.
 
         Rules
-        - Rewrite, never append. As the conversation develops, update, merge or drop earlier bullets. The summary must stay within the limits however long the conversation runs, so make room by dropping what matters least.
-        - Keep names, numbers, dates and technical terms exactly as said. The transcript comes from speech recognition: when a name or term looks misheard, correct it only if the context makes the right reading clear.
+        - Reply with nothing but the optional CONTEXT line, an optional "## " heading and "- " bullets. No preamble.
+        - Keep names, numbers, dates and technical terms exactly as said. The transcript comes from speech recognition: correct a misheard name or term only when the context makes the right reading clear.
         - Only what was said. No advice, no opinions, no outside facts.
-        - Reply with the summary only, no preamble.
         """
         let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
         if !extra.isEmpty {
@@ -183,47 +187,86 @@ public enum SummaryPrompt {
         return prompt
     }
 
-    public static func incremental(current: String, newTranscript: String) -> String {
-        """
-        Current summary:
-        <summary>
-        \(current)
-        </summary>
-
-        New transcript since the last update:
-        <transcript>
-        \(newTranscript)
-        </transcript>
-
-        Update the summary so it covers the whole conversation so far. Stay within the limits: fold the new material into existing bullets where it belongs, and drop what now matters least.
-        """
+    /// One update: the end of the notes and what was said since.
+    public static func append(current: LiveSummary?, newTranscript: String) -> String {
+        var out = "Context so far: \(current?.context ?? "not established yet")\n\n"
+        let notes = current?.text ?? ""
+        if notes.isEmpty {
+            out += "The notes are empty; this is their beginning.\n\n"
+        } else {
+            out += "Last lines of the notes, already written (do not repeat them):\n<notes>\n\(tail(notes))\n</notes>\n\n"
+        }
+        out += "New transcript:\n<transcript>\n\(newTranscript)\n</transcript>\n\nReply with the lines to add."
+        return out
     }
 
-    /// `current` carries what came before `transcript` when the transcript had to be cut.
-    public static func rewrite(current: String?, transcript: String, truncated: Bool) -> String {
-        var out = ""
-        if truncated, let current, !current.isEmpty {
-            out += """
-            Summary of the conversation so far (the transcript below is only its latest part):
-            <summary>
-            \(current)
-            </summary>
-
-
-            """
-        }
-        out += """
-        Transcript:
+    /// The refresh button: notes for everything said so far, written in one go.
+    public static func rewrite(transcript: String) -> String {
+        """
+        There are no notes yet. Transcript of the conversation so far:
         <transcript>
         \(transcript)
         </transcript>
 
-        Write the summary of the whole conversation from scratch.
+        Write the notes for all of it, in order, under topic headings, starting with the CONTEXT line. Cover every part of the conversation at the usual density; the per-update bullet count doesn't apply here.
         """
-        return out
     }
 
-    /// Strips code fences and preambles some models add anyway.
+    /// The notes' last heading and the lines after it, cut to the last `tailLimit` characters at a line break.
+    static func tail(_ notes: String) -> String {
+        let lines = notes.split(separator: "\n", omittingEmptySubsequences: true)
+        var picked: [Substring] = []
+        var total = 0
+        for line in lines.reversed() {
+            if total + line.count > tailLimit, !picked.isEmpty { break }
+            picked.insert(line, at: 0)
+            total += line.count
+        }
+        // Always show the current topic, so the model knows whether to continue it.
+        if let heading = lines.last(where: { $0.hasPrefix("#") }), !picked.contains(heading) {
+            picked.insert(heading, at: 0)
+        }
+        return picked.joined(separator: "\n")
+    }
+
+    /// The notes after a reply: its lines go at the end, and a CONTEXT line replaces the context.
+    /// `replacing` starts the notes over, for a full rewrite.
+    public static func merge(_ current: LiveSummary?, reply: String, coveredLineID: Int, replacing: Bool = false, now: Date = .now) -> LiveSummary {
+        var context = current?.context
+        var added: [String] = []
+        for raw in clean(reply).split(separator: "\n", omittingEmptySubsequences: true) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.uppercased().hasPrefix("CONTEXT:") {
+                let value = line.dropFirst(8).trimmingCharacters(in: .whitespaces)
+                if !value.isEmpty { context = value }
+            } else if !line.isEmpty, line.uppercased() != "NONE" {
+                added.append(line)
+            }
+        }
+        let old = replacing ? "" : (current?.text ?? "")
+        let oldLines = old.split(separator: "\n", omittingEmptySubsequences: true)
+        // A heading that repeats the current topic isn't a new topic.
+        if let first = added.first, first.hasPrefix("#"), let last = oldLines.last(where: { $0.hasPrefix("#") }),
+           heading(first) == heading(String(last)) {
+            added.removeFirst()
+        }
+        guard !added.isEmpty else {
+            return LiveSummary(text: old, updatedAt: current?.updatedAt ?? now, coveredLineID: coveredLineID,
+                               context: context, freshLine: current?.freshLine)
+        }
+        var text = old
+        for line in added {
+            if text.isEmpty { text = line } else { text += (line.hasPrefix("#") ? "\n\n" : "\n") + line }
+        }
+        return LiveSummary(text: text, updatedAt: now, coveredLineID: coveredLineID, context: context,
+                           freshLine: replacing ? nil : oldLines.count)
+    }
+
+    private static func heading(_ line: String) -> String {
+        line.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
+    /// Strips code fences some models add anyway.
     public static func clean(_ text: String) -> String {
         var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasPrefix("```") {
@@ -234,14 +277,19 @@ public enum SummaryPrompt {
         return t
     }
 
-    /// Whether enough happened since the last update to ask for another.
-    /// Updates come every ~500 new characters, at a pause after at least a sentence,
-    /// or after 90 s with anything new, so a slow talker still gets a summary.
-    public static func shouldUpdate(newCharacters: Int, sinceUpdate: TimeInterval, sinceLastSpeech: TimeInterval) -> Bool {
-        guard newCharacters > 0 else { return false }
-        if newCharacters >= 500 { return true }
-        if newCharacters >= 80 && sinceLastSpeech >= 6 && sinceUpdate >= 15 { return true }
-        return sinceUpdate >= 90
+    /// How much was said, comparable across languages: a Chinese, Japanese or Korean character
+    /// carries about as much as two Latin letters.
+    public static func weight(_ text: String) -> Int {
+        text.unicodeScalars.reduce(0) { $0 + ($1.value >= 0x2E80 ? 2 : 1) }
+    }
+
+    /// Whether enough was said since the last update to add to the notes. Notes should trail the
+    /// talk by seconds: after a couple of sentences, sooner at a pause, and never long with anything waiting.
+    public static func shouldUpdate(newWeight: Int, sinceUpdate: TimeInterval, sinceLastSpeech: TimeInterval) -> Bool {
+        guard newWeight >= 40 else { return false }
+        if newWeight >= 320 { return true }
+        if newWeight >= 100 && sinceLastSpeech >= 3 { return true }
+        return sinceUpdate >= 30
     }
 }
 

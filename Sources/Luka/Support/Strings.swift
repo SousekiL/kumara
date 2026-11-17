@@ -199,6 +199,10 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Write the notes again from the whole transcript": "根据完整转写重新生成笔记",
+        "Listening for the first few sentences…": "正在听开头几句…",
+        "Notes appear here a few sentences in, and keep growing as the conversation goes on.": "听到几句话后这里开始出现要点，并随对话不断往下追加。",
+        "Running notes beside the transcript: new points are added at the end every few sentences, in the order they were said, and what is already written stays put.": "在转写旁边按时间顺序记要点：每隔几句话在末尾追加新内容，已写的内容不再改动。",
         "Service": "服务",
         "Choose a preset": "选择预设",
         "The model’s name at this service": "该服务上的模型名称",

@@ -112,7 +112,7 @@ Settings › General › **Usage** shows audio sent to Soniox this session, this
 
 ## Live summary
 
-Settings › **Summary**: pick any OpenAI-compatible model (OpenAI, DeepSeek, Qwen, OpenRouter, Ollama…) or Claude, with its own API key. While you listen, a column beside the transcript keeps a summary (key points, decisions, questions and next steps) that updates every few hundred characters and is rewritten from the transcript every few updates, so earlier points get revised. ↻ rewrites now; the summary is saved with the session and leads the Markdown export. The transcript text goes to the model's provider; use Ollama to keep it on your Mac.
+Settings › **Assistant**: pick any OpenAI-compatible model (OpenAI, DeepSeek, Qwen, OpenRouter, Ollama…) or Claude, with its own API key. While you listen, a column beside the transcript keeps running notes: every few sentences, new points are added at the end under topic headings, in the order they were said, and what is already written stays put, so you only read the newest lines to keep up. ↻ writes the notes again from the whole transcript; they are saved with the session and lead the Markdown export. The transcript text goes to the model's provider; use Ollama to keep it on your Mac.
 
 ## Answers and knowledge base
 
