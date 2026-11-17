@@ -126,7 +126,7 @@ public struct KnowledgeBase: Sendable {
 }
 
 public enum AnswerPrompt {
-    public static func system(language: String, extra: String = "") -> String {
+    public static func system(language: String, mode: AssistantMode = .meeting, extra: String = "") -> String {
         var prompt = """
         You assist someone taking part in a live conversation (a meeting, an interview, a lecture or a call). A question was just asked. Give them what they need to answer it well, short enough to read at a glance. Write in \(language).
 
@@ -147,6 +147,7 @@ public enum AnswerPrompt {
 
         The transcript comes from speech recognition and may contain errors; read through them.
         """
+        if !mode.answerGuidance.isEmpty { prompt += "\n\n" + mode.answerGuidance }
         let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
         if !extra.isEmpty {
             prompt += "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)"
@@ -184,14 +185,15 @@ public enum AnswerPrompt {
 extension Transcript {
     /// The newest finished question that hasn't been handled, asked within `maxAge`, plus every
     /// other waiting question's line, so older ones aren't answered late. Never the user's own questions.
-    public func waitingQuestion(handled: Set<Int>, channelsOnly: Bool, now: Date = .now, maxAge: TimeInterval = 90)
+    public func waitingQuestion(handled: Set<Int>, channelsOnly: Bool, eagerness: AnswerEagerness = .normal,
+                                now: Date = .now, maxAge: TimeInterval = 90)
         -> (line: Line, all: [Int])?
     {
         let waiting = lines.suffix(30).filter { line in
             guard !line.isOpen, !handled.contains(line.id), now.timeIntervalSince(line.startedAt) <= maxAge else { return false }
             let channel = Channel(line.speaker)
             if channelsOnly ? channel != .them : channel == .me { return false }
-            return Questions.isQuestion(line.original)
+            return eagerness.accepts(line.original, fromThem: channel == .them)
         }
         guard let newest = waiting.last else { return nil }
         return (newest, waiting.map(\.id))

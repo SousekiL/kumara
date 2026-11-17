@@ -28,6 +28,15 @@ public struct LiveSummary: Codable, Sendable, Equatable {
 public enum SummaryDetail: String, Codable, CaseIterable, Sendable {
     case concise, standard, detailed
 
+    /// For an overview: main points, bullets in all, and words per bullet.
+    var overviewLimits: (points: Int, total: Int, words: Int) {
+        switch self {
+        case .concise: (5, 8, 20)
+        case .standard: (8, 13, 26)
+        case .detailed: (12, 20, 32)
+        }
+    }
+
     /// Bullets per update, and words per bullet.
     var limits: (bullets: String, words: Int) {
         switch self {
@@ -152,7 +161,8 @@ public enum SummaryPrompt {
     /// Characters of the notes' end sent along, so the model continues them instead of repeating them.
     public static let tailLimit = 700
 
-    public static func system(language: String, detail: SummaryDetail = .concise, extra: String = "") -> String {
+    public static func system(language: String, detail: SummaryDetail = .concise, mode: AssistantMode = .meeting, extra: String = "") -> String {
+        if mode.rewritesSummary { return overviewSystem(language: language, detail: detail, mode: mode, extra: extra) }
         let limits = detail.limits
         var prompt = """
         You keep running notes of a conversation that is being transcribed live (a meeting, an interview, a call, a lecture, a podcast or a video). The reader follows the notes as they grow and reads only the newest lines to keep up, so what is already written stays exactly as it is. Write in \(language).
@@ -179,12 +189,58 @@ public enum SummaryPrompt {
         - Reply with nothing but the optional CONTEXT line, an optional "## " heading and "- " bullets. No preamble.
         - Keep names, numbers, dates and technical terms exactly as said. The transcript comes from speech recognition: correct a misheard name or term only when the context makes the right reading clear.
         - Only what was said. No advice, no opinions, no outside facts.
+
+        \(mode.summaryGuidance)
         """
+        return prompt + own(extra)
+    }
+
+    private static func own(_ extra: String) -> String {
         let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !extra.isEmpty {
-            prompt += "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)"
+        return extra.isEmpty ? "" : "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)"
+    }
+
+    /// The other way to keep a summary: one structured overview, rewritten whole as the talk goes on.
+    static func overviewSystem(language: String, detail: SummaryDetail, mode: AssistantMode, extra: String) -> String {
+        let limits = detail.overviewLimits
+        return """
+        You maintain a structured summary of a talk that is being transcribed live. The reader glances at it to see where the talk stands as a whole. Write in \(language), headings included.
+
+        Each time you get the current summary and the new part of the transcript. Reply with the complete updated summary: rewrite and merge, so it always covers the whole talk within the limits below.
+
+        Format
+        Line 1: "CONTEXT: …", one sentence on what this is, what it is about and, if evident, who is speaking. Infer only from clear evidence and mark what you inferred with a word like "likely"; never invent names or titles.
+        Then Markdown with "## " headings and "- " bullets, using these sections, each only when it has content:
+        ## Main points: at most \(limits.points) bullets, in the order of the argument
+        ## Key terms: terms the speaker introduced, each with a few words of definition
+        ## Takeaways: conclusions, recommendations, or what to do next
+        At most \(limits.total) bullets in total. Each bullet is one sentence of at most \(limits.words) words (about \(limits.words * 2) characters in Chinese, Japanese or Korean).
+
+        Rules
+        - A bullet states a point; it doesn't narrate. Leave out greetings, banter, filler and repetition.
+        - Keep names, numbers, dates and technical terms exactly as said. The transcript comes from speech recognition: correct a misheard name or term only when the context makes the right reading clear.
+        - Only what was said. No advice, no opinions, no outside facts.
+        - Reply with the summary only, no preamble.
+
+        \(mode.summaryGuidance)
+        """ + own(extra)
+    }
+
+    /// One update of the overview: the whole current summary and what was said since.
+    public static func overview(current: LiveSummary?, newTranscript: String) -> String {
+        var out = ""
+        if let current, !current.text.isEmpty {
+            out += "Current summary:\n<summary>\n"
+            if let context = current.context { out += "CONTEXT: \(context)\n" }
+            out += "\(current.text)\n</summary>\n\n"
         }
-        return prompt
+        out += "New transcript:\n<transcript>\n\(newTranscript)\n</transcript>\n\nReply with the complete updated summary."
+        return out
+    }
+
+    /// An overview changes less often than notes: every few paragraphs, or a minute with something new.
+    public static func shouldUpdateOverview(newWeight: Int, sinceUpdate: TimeInterval) -> Bool {
+        newWeight >= 900 || (newWeight >= 150 && sinceUpdate >= 60)
     }
 
     /// One update: the end of the notes and what was said since.
@@ -210,6 +266,11 @@ public enum SummaryPrompt {
 
         Write the notes for all of it, in order, under topic headings, starting with the CONTEXT line. Cover every part of the conversation at the usual density; the per-update bullet count doesn't apply here.
         """
+    }
+
+    /// The same for an overview: one summary of everything said so far.
+    public static func rewriteOverview(transcript: String) -> String {
+        "Transcript of the talk so far:\n<transcript>\n\(transcript)\n</transcript>\n\nReply with the complete summary."
     }
 
     /// The notes' last heading and the lines after it, cut to the last `tailLimit` characters at a line break.

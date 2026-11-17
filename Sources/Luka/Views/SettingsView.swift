@@ -373,6 +373,14 @@ private struct SummarySettings: View {
                 Text(tr("One model, with its own API key, writes both the summary and the answers. A preset fills in the address and a model name to start from; check the name against the service’s current models. Ollama runs on this Mac and needs no key."))
             }
             Section {
+                Picker(tr("Mode"), selection: $summarizer.mode) {
+                    ForEach(AssistantMode.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                Text(summarizer.mode.explanation + " " + tr("The mode can also be changed in the column beside the transcript."))
+            }
+            Section {
                 Toggle(tr("Summarize while listening"), isOn: $summarizer.enabled)
                 Group {
                     Picker(tr("Detail"), selection: $summarizer.detail) {
@@ -389,7 +397,7 @@ private struct SummarySettings: View {
             } header: {
                 Text(tr("Summary"))
             } footer: {
-                Text(tr("Running notes beside the transcript: new points are added at the end every few sentences, in the order they were said, and what is already written stays put."))
+                Text(tr("In Meeting and Interview mode, new points are added at the end every few sentences and what is already written stays put. In Lecture mode the whole summary is rewritten as the talk goes on."))
             }
             .onChange(of: summarizer.enabled) {
                 if summarizer.enabled { summarizer.panelShown = true }
@@ -403,7 +411,7 @@ private struct SummarySettings: View {
             } header: {
                 Text(tr("Answers"))
             } footer: {
-                Text(tr("When someone else asks a question, a short answer with hints appears beside the transcript. With Me / Them on, only Them’s questions are answered."))
+                Text(tr("When someone else asks a question, a short answer with hints appears beside the transcript. With Me / Them on, only Them’s questions are answered. The mode sets how readily."))
             }
             .onChange(of: answerer.enabled) {
                 if answerer.enabled {

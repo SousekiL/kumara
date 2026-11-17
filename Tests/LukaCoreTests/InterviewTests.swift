@@ -319,3 +319,30 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(back.answers.first?.answer == "A.")
     }
 }
+
+@MainActor
+@Suite struct ModeTests {
+    @Test func modesChangeHowReadilyLinesAreAnswered() {
+        let t = Transcript()
+        t.ingest(tokens([("We shipped the pricing model last quarter and it cut losses.", true, nil), ("<end>", true, nil)]), channel: .them)
+        #expect(t.waitingQuestion(handled: [], channelsOnly: true, eagerness: .normal) == nil)
+        #expect(t.waitingQuestion(handled: [], channelsOnly: true, eagerness: .eager) != nil)
+
+        let talk = Transcript()
+        talk.ingest(tokens([("Tell me about a time you failed", true, nil), ("<end>", true, nil)]))
+        #expect(talk.waitingQuestion(handled: [], channelsOnly: false, eagerness: .conservative) == nil)
+        #expect(talk.waitingQuestion(handled: [], channelsOnly: false, eagerness: .normal) != nil)
+    }
+
+    @Test func lectureKeepsARewrittenOverview() {
+        #expect(AssistantMode.lecture.rewritesSummary && !AssistantMode.meeting.rewritesSummary && !AssistantMode.interview.rewritesSummary)
+        let lecture = SummaryPrompt.system(language: "English", detail: .standard, mode: .lecture, extra: "x")
+        #expect(lecture.contains("complete updated summary") && lecture.contains("## Main points: at most 8") && lecture.hasSuffix("x"))
+        let interview = SummaryPrompt.system(language: "English", mode: .interview)
+        #expect(interview.contains("Reply with only the lines to add") && interview.contains("This is an interview"))
+        #expect(AnswerPrompt.system(language: "English", mode: .interview).contains("first person"))
+        let p = SummaryPrompt.overview(current: LiveSummary(text: "## Main points\n- a", updatedAt: .now, coveredLineID: 0, context: "A talk."), newTranscript: "S: more")
+        #expect(p.contains("CONTEXT: A talk.\n## Main points\n- a"))
+        #expect(SummaryPrompt.shouldUpdateOverview(newWeight: 1000, sinceUpdate: 1) && !SummaryPrompt.shouldUpdateOverview(newWeight: 300, sinceUpdate: 20))
+    }
+}

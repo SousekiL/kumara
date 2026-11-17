@@ -13,29 +13,37 @@ struct SummaryPanel: View {
     private var summarizer: Summarizer { model.summarizer }
     private var answerer: Answerer { model.answerer }
 
-    private var hasSummary: Bool { summarizer.enabled || transcript.summary != nil }
-    private var hasAnswers: Bool { answerer.enabled || !transcript.answers.isEmpty }
-    /// With only one of the two in use, the column is just that one, without tabs.
-    private var showsTabs: Bool { hasSummary && hasAnswers }
-    private var showingAnswers: Bool { showsTabs ? answerer.panelShowsAnswers : hasAnswers }
-
     var body: some View {
         @Bindable var answerer = model.answerer
+        @Bindable var summarizer = model.summarizer
         let unseen = max(0, transcript.answers.count - seenAnswers)
         VStack(alignment: .leading, spacing: 0) {
-            if showsTabs {
+            HStack(spacing: 8) {
                 Picker("", selection: $answerer.panelShowsAnswers) {
                     Text(tr("Summary")).tag(false)
                     Text(unseen > 0 ? tr("Answers") + " · " + String(format: tr("%d new"), unseen) : tr("Answers")).tag(true)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
+                .fixedSize()
+                Spacer(minLength: 4)
+                // The kind of conversation: how the summary is kept, how readily questions are answered.
+                Picker("", selection: $summarizer.mode) {
+                    ForEach(AssistantMode.allCases, id: \.self) { Label($0.title, systemImage: $0.symbol).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
+                .help(summarizer.mode.explanation)
             }
-            if showingAnswers {
-                bar(title: tr("Answers")) { answersStatus } actions: {
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            if answerer.panelShowsAnswers {
+                bar { answersStatus } actions: {
                     if answerer.working { ProgressView().controlSize(.small) }
+                    Toggle("", isOn: $answerer.enabled)
+                        .toggleStyle(.switch).controlSize(.mini).labelsHidden()
+                        .help(tr("Answer questions as they’re asked"))
                 }
                 Divider()
                 ScrollView {
@@ -45,7 +53,7 @@ struct SummaryPanel: View {
                 }
                 .onChange(of: transcript.answers.count, initial: true) { seenAnswers = transcript.answers.count }
             } else {
-                bar(title: tr("Live Summary")) { summaryStatus } actions: {
+                bar { summaryStatus } actions: {
                     if summarizer.working { ProgressView().controlSize(.small) }
                     Button { model.refreshSummary(transcript) } label: { Image(systemName: "arrow.clockwise") }
                         .help(tr("Write the notes again from the whole transcript"))
@@ -53,6 +61,9 @@ struct SummaryPanel: View {
                     Button { copy(transcript.summary?.text, notice: tr("Copied summary")) } label: { Image(systemName: "doc.on.doc") }
                         .help(tr("Copy Summary"))
                         .disabled(transcript.summary == nil)
+                    Toggle("", isOn: $summarizer.enabled)
+                        .toggleStyle(.switch).controlSize(.mini).labelsHidden()
+                        .help(tr("Summarize while listening"))
                 }
                 Divider()
                 ScrollView {
@@ -68,7 +79,8 @@ struct SummaryPanel: View {
                     followingNotes = atBottom
                 }
                 .onChange(of: transcript.summary?.text) {
-                    guard followingNotes else { return }
+                    // An overview is rewritten whole, so there is no bottom to follow.
+                    guard followingNotes, !summarizer.mode.rewritesSummary else { return }
                     withAnimation(.smooth(duration: 0.3)) { notesPosition.scrollTo(edge: .bottom) }
                 }
             }
@@ -80,21 +92,17 @@ struct SummaryPanel: View {
     }
 
     /// One row under the tabs: what this is and how fresh, with its actions on the right.
-    private func bar(title: String, @ViewBuilder status: () -> some View, @ViewBuilder actions: () -> some View) -> some View {
+    private func bar(@ViewBuilder status: () -> some View, @ViewBuilder actions: () -> some View) -> some View {
         HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 1) {
-                // The tab already names the column.
-                if !showsTabs { Text(title).font(.headline) }
-                status()
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            status()
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Spacer(minLength: 8)
             actions()
                 .buttonStyle(.borderless)
         }
         .padding(.horizontal, 14)
-        .frame(minHeight: 36)
+        .frame(minHeight: 30)
         .padding(.vertical, 4)
     }
 
@@ -122,10 +130,12 @@ struct SummaryPanel: View {
             TimelineView(.periodic(from: .now, by: 5)) { context in
                 Text(String(format: tr("Updated %@"), Self.ago(summary.updatedAt, now: context.date)))
             }
-        } else if summarizer.enabled && summarizer.isConfigured {
+        } else if !summarizer.enabled {
+            Text(tr("Off"))
+        } else if summarizer.isConfigured {
             Text(tr("Listening for the first few sentences…"))
         } else {
-            Text(verbatim: " ")
+            Text(tr("No model set"))
         }
     }
 
@@ -146,8 +156,12 @@ struct SummaryPanel: View {
                             freshFrom: model.isLive(transcript) && model.isListening ? summary.freshLine : nil)
                     .animation(.smooth, value: summary.text)
             }
-        } else if !summarizer.isConfigured || !summarizer.enabled {
-            setupHint(tr("Turn on the live summary and pick a model in Settings › Assistant."))
+        } else if !summarizer.isConfigured {
+            setupHint(tr("Pick a model for the summary in Settings › Assistant."))
+        } else if !summarizer.enabled {
+            Text(tr("The summary is off. Turn it on with the switch above."))
+                .font(.callout)
+                .foregroundStyle(.secondary)
         } else {
             Text(tr("Notes appear here a few sentences in, and keep growing as the conversation goes on."))
                 .font(.callout)
@@ -162,10 +176,12 @@ struct SummaryPanel: View {
             Text(error).foregroundStyle(.red).lineLimit(2).help(error)
         } else if answerer.working {
             Text(tr("Answering…"))
-        } else if answerer.enabled && summarizer.isConfigured {
+        } else if !answerer.enabled {
+            Text(tr("Off"))
+        } else if summarizer.isConfigured {
             Text(answerer.knowledgeCharacters > 0 ? tr("Using your knowledge base") : tr("No knowledge base; the model answers on its own"))
         } else {
-            Text(verbatim: " ")
+            Text(tr("No model set"))
         }
     }
 
@@ -184,8 +200,12 @@ struct SummaryPanel: View {
                 }
             }
             .animation(.smooth, value: transcript.answers.count)
-        } else if !summarizer.isConfigured || !answerer.enabled {
-            setupHint(tr("Turn on answers and pick a model in Settings › Assistant."))
+        } else if !summarizer.isConfigured {
+            setupHint(tr("Pick a model for the answers in Settings › Assistant."))
+        } else if !answerer.enabled {
+            Text(tr("Answers are off. Turn them on with the switch above."))
+                .font(.callout)
+                .foregroundStyle(.secondary)
         } else {
             Text(tr("When someone asks a question, a short answer and hints appear here."))
                 .font(.callout)
@@ -274,5 +294,31 @@ private struct AnswerCard: View {
         }
         .contentShape(.rect)
         .onHover { hovering = $0 }
+    }
+}
+
+extension AssistantMode {
+    var title: String {
+        switch self {
+        case .lecture: tr("Lecture")
+        case .meeting: tr("Meeting")
+        case .interview: tr("Interview")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .lecture: "graduationcap"
+        case .meeting: "person.3"
+        case .interview: "person.2"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. Only questions left open are answered.")
+        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Questions asked by others are answered.")
+        case .interview: tr("Interviews: running notes of each question and what the answer covered. Every question and prompt from the other side is answered, in the first person.")
+        }
     }
 }

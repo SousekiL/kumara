@@ -199,6 +199,21 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Lecture": "讲座",
+        "Meeting": "会议",
+        "Interview": "面试",
+        "Off": "已关闭",
+        "No model set": "未设置模型",
+        "Pick a model for the summary in Settings › Assistant.": "请在 设置 › 助手 中为总结选择模型。",
+        "Pick a model for the answers in Settings › Assistant.": "请在 设置 › 助手 中为回答选择模型。",
+        "The summary is off. Turn it on with the switch above.": "总结已关闭，用上方的开关打开。",
+        "Answers are off. Turn them on with the switch above.": "回答已关闭，用上方的开关打开。",
+        "Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. Only questions left open are answered.": "演讲、讲座、播客和视频：一份结构化总结，随内容进展整体刷新。只回答真正悬而未答的问题。",
+        "Meetings and calls: running notes added in order, with decisions and tasks marked. Questions asked by others are answered.": "会议和通话：按顺序往下追加要点，标出决定和待办。回答别人提出的问题。",
+        "Interviews: running notes of each question and what the answer covered. Every question and prompt from the other side is answered, in the first person.": "面试：按顺序记下每个问题和回答要点。对方的每个问题和提示都会回答，用第一人称。",
+        "The mode can also be changed in the column beside the transcript.": "也可以在转写旁边的侧栏里切换模式。",
+        "In Meeting and Interview mode, new points are added at the end every few sentences and what is already written stays put. In Lecture mode the whole summary is rewritten as the talk goes on.": "会议和面试模式下，每隔几句话在末尾追加新要点，已写的内容不再改动。讲座模式下，总结会随内容进展整体刷新。",
+        "When someone else asks a question, a short answer with hints appears beside the transcript. With Me / Them on, only Them’s questions are answered. The mode sets how readily.": "别人提问时，转写旁边会出现简短回答和提示。开启“我 / 对方”后只回答对方的问题。回答的积极程度由模式决定。",
         "Write the notes again from the whole transcript": "根据完整转写重新生成笔记",
         "Listening for the first few sentences…": "正在听开头几句…",
         "Notes appear here a few sentences in, and keep growing as the conversation goes on.": "听到几句话后这里开始出现要点，并随对话不断往下追加。",

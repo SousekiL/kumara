@@ -119,7 +119,8 @@ final class Answerer {
             sessionID = t.id
             handled = Set(t.lines.map(\.id))
         }
-        guard !working, let waiting = t.waitingQuestion(handled: handled, channelsOnly: channelsOnly) else { return }
+        let mode = summarizer.mode
+        guard !working, let waiting = t.waitingQuestion(handled: handled, channelsOnly: channelsOnly, eagerness: mode.eagerness) else { return }
         handled.formUnion(waiting.all)
         let line = waiting.line
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
@@ -127,7 +128,7 @@ final class Answerer {
                                      conversation: conversation, knowledge: knowledge.excerpts(for: line.original))
         let endpoint = summarizer.endpoint
         guard let request = endpoint.request(apiKey: summarizer.apiKey,
-                                             system: AnswerPrompt.system(language: languageName, extra: instructions),
+                                             system: AnswerPrompt.system(language: languageName, mode: mode, extra: instructions),
                                              user: user, maxTokens: 500) else { return }
         working = true
         Task {

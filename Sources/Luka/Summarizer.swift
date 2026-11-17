@@ -21,6 +21,8 @@ final class Summarizer {
     var detail: SummaryDetail { didSet { defaults.set(detail.rawValue, forKey: "summary.detail") } }
     /// The user's own additions to the built-in prompt.
     var instructions: String { didSet { defaults.set(instructions, forKey: "summary.instructions") } }
+    /// The kind of conversation: sets how the summary is kept and how readily questions are answered.
+    var mode: AssistantMode { didSet { defaults.set(mode.rawValue, forKey: "assistant.mode") } }
     var fontSize: Double { didSet { defaults.set(fontSize, forKey: "summary.fontSize") } }
     static let fontRange = 10.0...22.0
     /// The summary column in the transcript window.
@@ -43,6 +45,7 @@ final class Summarizer {
         apiKey = SecretStore.read("summary") ?? ""
         detail = SummaryDetail(rawValue: d.string(forKey: "summary.detail") ?? "") ?? .concise
         instructions = d.string(forKey: "summary.instructions") ?? ""
+        mode = AssistantMode(rawValue: d.string(forKey: "assistant.mode") ?? "") ?? .meeting
         fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 13
         // Until the user decides, the column shows only when there is something to put in it.
         panelShown = d.object(forKey: "summary.panelShown") as? Bool
@@ -71,9 +74,11 @@ final class Summarizer {
         let new = t.summaryText(after: t.summary?.coveredLineID, closedOnly: true, limit: SummaryPrompt.incrementalLimit, name: name)
         // A finished line with nothing more coming in means the speaker has paused.
         let speaking = t.lines.last?.isOpen == true || t.provisional != nil
-        guard SummaryPrompt.shouldUpdate(newWeight: SummaryPrompt.weight(new.text),
-                                         sinceUpdate: now.timeIntervalSince(lastAttempt),
-                                         sinceLastSpeech: speaking ? 0 : 10) else { return }
+        let weight = SummaryPrompt.weight(new.text)
+        let since = now.timeIntervalSince(lastAttempt)
+        guard mode.rewritesSummary
+            ? SummaryPrompt.shouldUpdateOverview(newWeight: weight, sinceUpdate: since)
+            : SummaryPrompt.shouldUpdate(newWeight: weight, sinceUpdate: since, sinceLastSpeech: speaking ? 0 : 10) else { return }
         run(t, rewrite: false, closedOnly: true, languageName: languageName, name: name)
     }
 
@@ -100,23 +105,27 @@ final class Summarizer {
                 rewrite = false
             } else {
                 guard !all.text.isEmpty else { return }
-                user = SummaryPrompt.rewrite(transcript: all.text)
+                user = mode.rewritesSummary ? SummaryPrompt.rewriteOverview(transcript: all.text) : SummaryPrompt.rewrite(transcript: all.text)
                 lastID = all.lastLineID
             }
         }
         if !rewrite {
             let new = t.summaryText(after: t.summary?.coveredLineID, closedOnly: closedOnly, limit: SummaryPrompt.incrementalLimit, name: name)
             guard !new.text.isEmpty else { return }
-            user = SummaryPrompt.append(current: t.summary, newTranscript: new.text)
+            user = mode.rewritesSummary
+                ? SummaryPrompt.overview(current: t.summary, newTranscript: new.text)
+                : SummaryPrompt.append(current: t.summary, newTranscript: new.text)
             lastID = new.lastLineID
         }
         let endpoint = self.endpoint
-        let system = SummaryPrompt.system(language: languageName, detail: detail, extra: instructions)
-        guard let request = endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: rewrite ? 6_000 : 1_000) else {
+        let system = SummaryPrompt.system(language: languageName, detail: detail, mode: mode, extra: instructions)
+        // An overview comes back whole each time, so it replaces what was there.
+        let whole = rewrite || mode.rewritesSummary
+        guard let request = endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: rewrite ? 6_000 : whole ? 2_500 : 1_000) else {
             lastError = tr("The summary model’s address isn’t valid.")
             return
         }
-        let replacing = rewrite
+        let replacing = whole
         working = true
         lastAttempt = .now
         Task {
