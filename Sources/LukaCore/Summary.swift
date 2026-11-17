@@ -18,6 +18,19 @@ public struct LiveSummary: Codable, Sendable, Equatable {
     }
 }
 
+/// How much the summary keeps.
+public enum SummaryDetail: String, Codable, CaseIterable, Sendable {
+    case concise, standard, detailed
+
+    var limits: (keyPoints: Int, total: Int, words: Int) {
+        switch self {
+        case .concise: (4, 7, 18)
+        case .standard: (6, 10, 24)
+        case .detailed: (10, 16, 30)
+        }
+    }
+}
+
 /// Which API shape the summary model speaks.
 public enum SummaryProvider: String, Codable, CaseIterable, Sendable {
     /// `/chat/completions`: OpenAI, DeepSeek, Qwen (DashScope), OpenRouter, Ollama and most others.
@@ -131,23 +144,43 @@ public enum SummaryPrompt {
     /// After this many incremental updates, the next one rereads the transcript and rewrites from scratch.
     public static let rewriteEvery = 6
 
-    public static func system(language: String) -> String {
-        """
-        You keep a live summary of a conversation (a meeting, call or interview) that is being transcribed as it happens. \
-        Write the summary in \(language), including the section headings.
+    public static func system(language: String, detail: SummaryDetail = .concise, extra: String = "") -> String {
+        let limits = detail.limits
+        var prompt = """
+        You maintain a live briefing of a conversation that is being transcribed in real time (a meeting, an interview, a call, a lecture, a podcast or a video). The reader glances at it to learn what matters so far, and may have missed the conversation entirely. Write it in \(language), headings included.
 
-        Format: Markdown with "## " section headings and "- " bullets, nothing else. Use only the sections that have content, in this order:
-        ## Key points: what was discussed, most important first
+        What to write
+        - Substance, not a record of the talk. State the topics, claims, facts, numbers, conclusions, and disagreements with their reasons. A bullet states a point; it never narrates who said what in what order.
+        - Name a person only when who said it changes the meaning: who owns a decision or a task, who committed to something, who disagrees with whom, who must answer a question. Never write placeholder labels such as "Speaker 1". If someone has no real name, leave them out, or use their role ("the host", "the interviewer", "the candidate") when the transcript makes the role clear.
+        - Leave out greetings, small talk, banter, filler, repetition and asides. If a joke carries a real point, state the point plainly. Ask of each bullet: would someone who missed the conversation need this? If not, drop it.
+        - Merge related remarks into one bullet. Prefer fewer, denser bullets to many thin ones.
+
+        Context line
+        - Open with one line under "## Context": what kind of conversation this is, what it is about, and who is taking part if that is evident. Example: "Political talk show; two hosts on a local election scandal."
+        - Infer only from clear evidence in the transcript, and mark what you inferred with a word like "likely" or "appears". When the evidence is thin, state only what is certain, or leave the line out. Never invent names, titles, employers or relationships, and never guess at anyone's private circumstances.
+        - Revise the line as more evidence arrives.
+
+        Format
+        Markdown with "## " headings and "- " bullets only. Use these sections in this order, each only when it has content:
+        ## Context: one plain line, no bullet
+        ## Key points: at most \(limits.keyPoints) bullets, most important first
         ## Decisions: what was agreed or settled
-        ## Questions and next steps: questions asked of someone, open issues, action items with owners
-        If speakers are named "Them" and "Me", add a section on what Them asked about or cared about most, after Key points.
+        ## Open questions and next steps: unresolved questions, and tasks with their owner when one was named
+        If the speakers are "Me" and "Them", add after Key points:
+        ## What they want: at most 3 bullets on what Them asked about or cares about most. Refer to Me as "you".
+        At most \(limits.total) bullets in total. Each bullet is one sentence of at most \(limits.words) words (about \(limits.words * 2) characters in Chinese, Japanese or Korean).
 
-        Rules:
-        - Rewrite and merge; don't append. When later talk changes or clarifies an earlier point, update that point.
-        - At most about 12 bullets in total, each one short line. Keep names, numbers, dates and terms exactly as said.
-        - Only what was actually said. Don't guess, advise or add facts. The transcript is speech recognition and may contain errors.
+        Rules
+        - Rewrite, never append. As the conversation develops, update, merge or drop earlier bullets. The summary must stay within the limits however long the conversation runs, so make room by dropping what matters least.
+        - Keep names, numbers, dates and technical terms exactly as said. The transcript comes from speech recognition: when a name or term looks misheard, correct it only if the context makes the right reading clear.
+        - Only what was said. No advice, no opinions, no outside facts.
         - Reply with the summary only, no preamble.
         """
+        let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !extra.isEmpty {
+            prompt += "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)"
+        }
+        return prompt
     }
 
     public static func incremental(current: String, newTranscript: String) -> String {
@@ -162,7 +195,7 @@ public enum SummaryPrompt {
         \(newTranscript)
         </transcript>
 
-        Update the summary so it covers the whole conversation so far.
+        Update the summary so it covers the whole conversation so far. Stay within the limits: fold the new material into existing bullets where it belongs, and drop what now matters least.
         """
     }
 

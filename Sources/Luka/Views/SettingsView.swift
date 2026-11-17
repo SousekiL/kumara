@@ -205,6 +205,15 @@ private struct CaptionSettings: View {
                      : tr("Captions stay until you hide them with ⌃⌥C."))
             }
             Section {
+                Picker(tr("Font"), selection: $model.fontFamily) {
+                    Text(tr("System")).tag("")
+                    Divider()
+                    ForEach(LukaFont.families, id: \.self) { Text($0).tag($0) }
+                }
+            } footer: {
+                Text(tr("Used for captions, the transcript and the summary."))
+            }
+            Section {
                 Picker(tr("Style"), selection: $model.captionStyle) {
                     ForEach(CaptionStyle.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
@@ -334,6 +343,21 @@ private struct SummarySettings: View {
                 Text(tr("OpenAI-compatible covers OpenAI, DeepSeek (https://api.deepseek.com/v1), Qwen (https://dashscope-intl.aliyuncs.com/compatible-mode/v1), OpenRouter (https://openrouter.ai/api/v1) and Ollama (http://localhost:11434/v1, no key). Leave Base URL empty for the provider’s default."))
             }
             Section {
+                Picker(tr("Detail"), selection: $summarizer.detail) {
+                    Text(tr("Concise")).tag(SummaryDetail.concise)
+                    Text(tr("Standard")).tag(SummaryDetail.standard)
+                    Text(tr("Detailed")).tag(SummaryDetail.detailed)
+                }
+                .pickerStyle(.segmented)
+                LabeledContent(tr("Text size")) {
+                    HStack {
+                        Slider(value: $summarizer.fontSize, in: Summarizer.fontRange, step: 1)
+                        Text(verbatim: "\(Int(summarizer.fontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
+                    }
+                }
+                TextField(tr("Extra instructions"), text: $summarizer.instructions,
+                          prompt: Text(tr("Optional, e.g. “This is an actuarial interview; list every technical question.”")), axis: .vertical)
+                    .lineLimit(2...5)
                 Picker(tr("Summary language"), selection: $summarizer.language) {
                     Text(tr("Same as translation")).tag("")
                     Divider()

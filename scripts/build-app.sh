@@ -12,7 +12,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP=build/Luka.app
+# The fork installs as its own app, beside the original Luka.
+APP="build/Luka Plus.app"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
 IDENTITY="${LUKA_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ {print $2; exit}')}"
 NOTARY_PROFILE="${LUKA_NOTARY_PROFILE:-luka-notary}"
@@ -98,9 +99,10 @@ case "${1:-}" in
     --install)
         build_app
         mkdir -p ~/Applications
-        rm -rf ~/Applications/Luka.app
+        # Earlier builds of this fork were installed as Luka.app; the original lives in /Applications.
+        rm -rf ~/Applications/Luka.app "$HOME/Applications/Luka Plus.app"
         cp -R "$APP" ~/Applications/
-        echo "Installed ~/Applications/Luka.app"
+        echo "Installed ~/Applications/Luka Plus.app"
         ;;
     --zip)
         build_app

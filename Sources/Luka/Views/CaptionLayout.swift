@@ -25,14 +25,16 @@ struct CaptionBlock: Equatable {
 
 struct CaptionMetrics: Equatable {
     let fontSize: CGFloat
+    /// Font family; empty is the system font.
+    var family: String = ""
 
-    var font: NSFont { .systemFont(ofSize: fontSize, weight: .medium) }
+    var font: NSFont { LukaFont.ns(family, size: fontSize, weight: .medium) }
     var lineHeight: CGFloat { ceil(fontSize * 1.36) }
     var originalFontSize: CGFloat { max(11, (fontSize * 0.62).rounded()) }
-    var originalFont: NSFont { .systemFont(ofSize: originalFontSize, weight: .regular) }
+    var originalFont: NSFont { LukaFont.ns(family, size: originalFontSize, weight: .regular) }
     var originalLineHeight: CGFloat { ceil(originalFontSize * 1.4) }
     var labelFontSize: CGFloat { max(10, (fontSize * 0.54).rounded()) }
-    var labelFont: NSFont { .systemFont(ofSize: labelFontSize, weight: .semibold) }
+    var labelFont: NSFont { LukaFont.ns(family, size: labelFontSize, weight: .semibold) }
     var horizontalPadding: CGFloat { max(14, fontSize * 0.75) }
     var verticalPadding: CGFloat { max(8, fontSize * 0.42) }
     var gutterSpacing: CGFloat { max(8, fontSize * 0.45) }

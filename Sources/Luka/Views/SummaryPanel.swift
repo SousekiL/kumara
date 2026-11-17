@@ -79,7 +79,7 @@ struct SummaryPanel: View {
                 Button(tr("Open Settings…")) { model.openSettings() }
             }
         } else if let summary = transcript.summary {
-            SummaryText(markdown: summary.text, fontSize: model.transcriptFontSize)
+            SummaryText(markdown: summary.text, fontSize: summarizer.fontSize, family: model.fontFamily)
                 .id(summary.updatedAt)
                 .transition(.opacity)
                 .animation(.smooth, value: summary.updatedAt)
@@ -101,23 +101,25 @@ struct SummaryPanel: View {
 private struct SummaryText: View {
     let markdown: String
     let fontSize: Double
+    let family: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             ForEach(Array(markdown.split(separator: "\n", omittingEmptySubsequences: true).enumerated()), id: \.offset) { _, raw in
                 let line = raw.trimmingCharacters(in: .whitespaces)
                 if line.hasPrefix("#") {
                     Text(inline(String(line.drop(while: { $0 == "#" })).trimmingCharacters(in: .whitespaces)))
-                        .font(.system(size: fontSize, weight: .semibold))
-                        .padding(.top, 8)
+                        .font(LukaFont.font(family, size: fontSize, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 6)
                 } else if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("• ") {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(verbatim: "•").foregroundStyle(.secondary)
                         Text(inline(String(line.dropFirst(2))))
                     }
-                    .font(.system(size: fontSize))
+                    .font(LukaFont.font(family, size: fontSize))
                 } else {
-                    Text(inline(line)).font(.system(size: fontSize))
+                    Text(inline(line)).font(LukaFont.font(family, size: fontSize))
                 }
             }
         }

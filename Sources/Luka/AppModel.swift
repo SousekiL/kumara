@@ -138,6 +138,8 @@ final class AppModel {
     var captionLanguageFilter: String? {
         mode == .threeWay && sessionConfig.threeWayLanguages.contains(captionLanguage) ? captionLanguage : nil
     }
+    /// Font family for captions, the transcript and the summary; empty is the system font.
+    var fontFamily: String { didSet { store(fontFamily, "fontFamily") } }
     var captionStyle: CaptionStyle { didSet { store(captionStyle.rawValue, "captionStyle") } }
     var captionPinned: Bool { didSet { store(captionPinned, "captionPinned") } }
     var transcriptFontSize: Double { didSet { store(transcriptFontSize, "transcriptFontSize") } }
@@ -172,7 +174,20 @@ final class AppModel {
     static let transcriptFontRange = 11.0...28.0
     static let presenterFontRange = 20.0...96.0
 
+    /// Luka Plus has its own bundle ID, so its settings start empty: on first launch, take over
+    /// the original Luka's. The API key and sessions are files in Application Support and are shared.
+    private static func adoptOriginalSettings() {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: "adoptedOriginalSettings") else { return }
+        d.set(true, forKey: "adoptedOriginalSettings")
+        guard let old = d.persistentDomain(forName: "io.github.stablefluffy.luka") else { return }
+        for (key, value) in old where d.object(forKey: key) == nil && !key.hasPrefix("NS") && !key.hasPrefix("Apple") {
+            d.set(value, forKey: key)
+        }
+    }
+
     init() {
+        Self.adoptOriginalSettings()
         let d = UserDefaults.standard
         let env = ProcessInfo.processInfo.environment
         apiKey = SecretStore.read() ?? env["SONIOX_API_KEY"] ?? ""
@@ -200,6 +215,7 @@ final class AppModel {
         captionFontSize = d.object(forKey: "captionFontSize") as? Double ?? 24
         captionShowsOriginal = d.bool(forKey: "captionShowsOriginal")
         captionLanguage = d.string(forKey: "captionLanguage") ?? ""
+        fontFamily = d.string(forKey: "fontFamily") ?? ""
         captionStyle = CaptionStyle(rawValue: d.string(forKey: "captionStyle") ?? "") ?? .glass
         captionPinned = d.object(forKey: "captionPinned") as? Bool ?? true
         transcriptFontSize = d.object(forKey: "transcriptFontSize") as? Double ?? 15
@@ -417,7 +433,7 @@ final class AppModel {
         transcript.clearProvisional()
         store.save(transcript)
         flushUsage()
-        summarizer.catchUp(transcript, languageName: summaryLanguageName, name: { [weak self] in self?.speakerName($0) ?? "" })
+        summarizer.catchUp(transcript, languageName: summaryLanguageName, name: summaryName(in: transcript))
         // Soniox's own numbers lag a little; look again once this session has been billed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.refreshAccount() }
     }
@@ -698,13 +714,27 @@ final class AppModel {
         return Locale(identifier: "en").localizedString(forLanguageCode: code) ?? code
     }
 
+    /// Speaker names as the summary model sees them: real names when given, otherwise the fixed
+    /// English labels the prompt knows ("Me", "Them", "Speaker 1"), whatever the interface language.
+    private func summaryName(in t: Transcript) -> (SpeakerID) -> String {
+        { id in
+            guard let speaker = t.speaker(id) else { return "Speaker" }
+            if !speaker.name.isEmpty { return speaker.name }
+            switch Channel(speaker.id) {
+            case .me: return "Me"
+            case .them: return "Them"
+            case nil: return "Speaker \(speaker.ordinal)"
+            }
+        }
+    }
+
     private func tickSummary() {
         guard summarizer.enabled, [.live, .standby, .paused].contains(status) else { return }
-        summarizer.tick(transcript, languageName: summaryLanguageName, name: { [weak self] in self?.speakerName($0) ?? "" })
+        summarizer.tick(transcript, languageName: summaryLanguageName, name: summaryName(in: transcript))
     }
 
     func refreshSummary(_ t: Transcript) {
-        summarizer.refresh(t, languageName: summaryLanguageName, name: { [weak self] in self?.speakerName($0, in: t) ?? "" })
+        summarizer.refresh(t, languageName: summaryLanguageName, name: summaryName(in: t))
     }
 
     // MARK: Soniox account

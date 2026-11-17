@@ -393,6 +393,7 @@ struct SessionView: View {
 }
 
 struct TurnView: View {
+    @Environment(\.fontFamily) private var family
     @Environment(AppModel.self) private var model
     let transcript: Transcript
     let turn: Turn
@@ -430,7 +431,7 @@ struct TurnView: View {
                 }
                 if let p = live, !liveJoinsLine {
                     Text(p.text)
-                        .font(.system(size: size))
+                        .font(LukaFont.font(family, size: size))
                         .foregroundStyle(.tertiary)
                         .transition(.opacity)
                 }
@@ -461,6 +462,7 @@ struct TurnView: View {
 }
 
 struct LineView: View {
+    @Environment(\.fontFamily) private var family
     let line: Line
     let showOriginal: Bool
     let size: Double
@@ -473,21 +475,21 @@ struct LineView: View {
                 let pending = [line.pendingOriginal, live].filter { !$0.isEmpty }.joined(separator: " ")
                 if !line.translatedText.isEmpty || pending.isEmpty {
                     Text(line.translatedText)
-                        .font(.system(size: size))
+                        .font(LukaFont.font(family, size: size))
                         .foregroundStyle(.primary)
                 }
                 if showOriginal {
                     Text("\(Text(line.original))\(Text(live.isEmpty ? "" : (line.original.isEmpty ? live : " " + live)).foregroundStyle(.tertiary))")
-                        .font(.system(size: max(10, size - 2)))
+                        .font(LukaFont.font(family, size: max(10, size - 2)))
                         .foregroundStyle(.secondary)
                 } else if !pending.isEmpty {
                     Text(pending)
-                        .font(.system(size: size))
+                        .font(LukaFont.font(family, size: size))
                         .foregroundStyle(.tertiary)
                 }
             } else {
                 Text("\(Text(line.original))\(Text(live.isEmpty ? "" : " " + live).foregroundStyle(.tertiary))")
-                    .font(.system(size: size))
+                    .font(LukaFont.font(family, size: size))
             }
         }
         .lineSpacing(size * 0.18)
@@ -496,6 +498,7 @@ struct LineView: View {
 }
 
 private struct EditableLine: View {
+    @Environment(\.fontFamily) private var family
     let transcript: Transcript
     let line: Line
     let showOriginal: Bool
@@ -536,7 +539,7 @@ private struct EditableLine: View {
     private func field(_ text: Binding<String>, size: Double, secondary: Bool = false) -> some View {
         TextField("", text: text, axis: .vertical)
             .textFieldStyle(.plain)
-            .font(.system(size: size))
+            .font(LukaFont.font(family, size: size))
             .foregroundStyle(secondary ? .secondary : .primary)
     }
 }

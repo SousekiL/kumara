@@ -1,5 +1,11 @@
 enum Strings {
     static let ko: [String: String] = [
+        "Detail": "상세도",
+        "Concise": "간결",
+        "Standard": "표준",
+        "Detailed": "자세히",
+        "Font": "서체",
+        "Extra instructions": "추가 지시",
         "Summary": "요약",
         "Live Summary": "실시간 요약",
         "Balance": "잔액",
@@ -193,6 +199,14 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Detail": "详细程度",
+        "Concise": "精简",
+        "Standard": "标准",
+        "Detailed": "详细",
+        "Extra instructions": "附加指令",
+        "Optional, e.g. “This is an actuarial interview; list every technical question.”": "可选，例如“这是精算面试，请列出所有技术问题”。",
+        "Font": "字体",
+        "Used for captions, the transcript and the summary.": "用于字幕、转写和总结。",
         "Summary": "总结",
         "Live Summary": "实时总结",
         "Usage in Luka": "Luka 内用量",

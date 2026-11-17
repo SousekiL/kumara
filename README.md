@@ -92,6 +92,10 @@ Inside Luka: <kbd>⌘</kbd><kbd>E</kbd> names whoever is speaking, <kbd>⌘</kbd
 
 Listen to Mac audio, the microphone, or both. The interface speaks English, 한국어 and 中文.
 
+## This fork: Luka Plus
+
+This fork builds as **Luka Plus** (`~/Applications/Luka Plus.app`, bundle ID `io.github.sousekil.luka-plus`), so it sits beside the original Luka without being mistaken for it. It takes over the original's settings on first launch and shares its API key and sessions; don't run both at once. Settings › Captions › **Font** sets the font for captions, the transcript and the summary.
+
 ## Meetings and interviews
 
 Settings › General › **Meetings and interviews**, also in the menu bar:

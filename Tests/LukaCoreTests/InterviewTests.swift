@@ -214,3 +214,21 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(q.contains("end_time=2026-11-18T00:00:00Z"))
     }
 }
+
+@Suite struct PromptTests {
+    @Test func promptCarriesLimitsLanguageAndExtras() {
+        let p = SummaryPrompt.system(language: "Simplified Chinese", detail: .concise, extra: " List numbers. ")
+        #expect(p.contains("Write it in Simplified Chinese"))
+        #expect(p.contains("at most 4 bullets"))
+        #expect(p.contains("At most 7 bullets in total"))
+        #expect(p.hasSuffix("List numbers."))
+        #expect(!SummaryPrompt.system(language: "English").contains("reader's own instructions"))
+    }
+
+    @Test func untranslatedTwoWayVoiceKeepsBothHints() {
+        let base = SessionConfig(mode: .twoWay, source: nil, target: "zh", languageA: "en", languageB: "zh", context: "")
+        let payload = base.forMyVoice(translate: false).payload(apiKey: "k")
+        #expect(payload["language_hints"] as? [String] == ["en", "zh"])
+        #expect(payload["translation"] == nil)
+    }
+}

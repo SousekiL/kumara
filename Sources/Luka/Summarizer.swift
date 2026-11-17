@@ -17,6 +17,12 @@ final class Summarizer {
     /// Soniox language code; empty follows the translation language.
     var language: String { didSet { defaults.set(language, forKey: "summary.language") } }
     var apiKey: String { didSet { SecretStore.save(apiKey, slot: "summary") } }
+    /// How much the summary keeps. A change takes effect as a rewrite at the next update.
+    var detail: SummaryDetail { didSet { defaults.set(detail.rawValue, forKey: "summary.detail"); rewriteNext() } }
+    /// The user's own additions to the built-in prompt.
+    var instructions: String { didSet { defaults.set(instructions, forKey: "summary.instructions"); rewriteNext() } }
+    var fontSize: Double { didSet { defaults.set(fontSize, forKey: "summary.fontSize") } }
+    static let fontRange = 10.0...22.0
     /// The summary column in the transcript window.
     var panelShown: Bool { didSet { defaults.set(panelShown, forKey: "summary.panelShown") } }
 
@@ -37,6 +43,9 @@ final class Summarizer {
         model = d.string(forKey: "summary.model") ?? ""
         language = d.string(forKey: "summary.language") ?? ""
         apiKey = SecretStore.read("summary") ?? ""
+        detail = SummaryDetail(rawValue: d.string(forKey: "summary.detail") ?? "") ?? .concise
+        instructions = d.string(forKey: "summary.instructions") ?? ""
+        fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 13
         panelShown = d.object(forKey: "summary.panelShown") as? Bool ?? true
     }
 
@@ -50,6 +59,8 @@ final class Summarizer {
             && (!apiKey.trimmingCharacters(in: .whitespaces).isEmpty || isLocal)
             && endpoint.url != nil
     }
+
+    private func rewriteNext() { updatesSinceRewrite = SummaryPrompt.rewriteEvery }
 
     // MARK: Updating
 
@@ -102,7 +113,7 @@ final class Summarizer {
             lastID = new.lastLineID
         }
         let endpoint = self.endpoint
-        guard let request = endpoint.request(apiKey: apiKey, system: SummaryPrompt.system(language: languageName), user: user) else {
+        guard let request = endpoint.request(apiKey: apiKey, system: SummaryPrompt.system(language: languageName, detail: detail, extra: instructions), user: user) else {
             lastError = tr("The summary model’s address isn’t valid.")
             return
         }

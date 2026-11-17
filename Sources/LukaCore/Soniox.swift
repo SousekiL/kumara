@@ -88,6 +88,8 @@ public struct SessionConfig: Sendable, Equatable {
     public var context: String
     /// Speaker diarization. Off for streams that hear one known person, such as the microphone in Me / Them mode.
     public var diarize: Bool = true
+    /// Language hints for transcribe mode when there is more than one; otherwise `source` is the hint.
+    public var hints: [String]?
 
     public init(mode: TranslationMode, source: String?, target: String, languageA: String, languageB: String,
                 languageC: String = "zh", context: String) {
@@ -118,7 +120,7 @@ public struct SessionConfig: Sendable, Equatable {
         c.diarize = false
         if !translate {
             // Keep the language hints so recognition stays as good; just drop the translation.
-            if mode == .twoWay { c.source = nil }
+            if mode == .twoWay { c.hints = [languageA, languageB] }
             c.mode = .transcribe
         }
         return c
@@ -150,7 +152,7 @@ public struct SessionConfig: Sendable, Equatable {
             cfg["translation"] = ["type": "one_way", "target_language": languages[min(lane, languages.count - 1)]]
             cfg["language_hints"] = languages
         case .transcribe:
-            if let source { cfg["language_hints"] = [source] }
+            if let hints { cfg["language_hints"] = hints } else if let source { cfg["language_hints"] = [source] }
         }
         let text = [context.trimmingCharacters(in: .whitespacesAndNewlines), carryover.map { "Recent conversation: \($0)" } ?? ""]
             .filter { !$0.isEmpty }

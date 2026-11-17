@@ -9,7 +9,7 @@ struct CaptionRoot: View {
     @State private var languagesShown = false
     @Namespace private var glass
 
-    private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize) }
+    private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize, family: model.fontFamily) }
 
     var body: some View {
         let showToolbar = (hovering || languagesShown || model.notice != nil) && !model.locked
@@ -175,7 +175,7 @@ struct CaptionRowView: View {
                             model.renaming = RenameRequest(session: model.transcript.id, id: model.transcript.canonical(speaker), place: .caption)
                         } label: {
                             Text(model.speakerName(speaker))
-                                .font(.system(size: metrics.labelFontSize, weight: .semibold))
+                                .font(LukaFont.font(metrics.family, size: metrics.labelFontSize, weight: .semibold))
                                 .foregroundStyle(model.speakerColor(speaker))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -202,7 +202,7 @@ struct CaptionRowView: View {
         let solid = Text(row.solid).foregroundStyle(row.isOriginal ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
         let faint = Text(row.faint).foregroundStyle(.tertiary)
         return Text("\(solid)\(faint)")
-            .font(.system(size: size, weight: row.isOriginal ? .regular : .medium))
+            .font(LukaFont.font(metrics.family, size: size, weight: row.isOriginal ? .regular : .medium))
     }
 }
 

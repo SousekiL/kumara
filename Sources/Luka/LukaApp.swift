@@ -17,10 +17,11 @@ struct LukaApp: App {
 
     var body: some Scene {
         let model = delegate.model
-        Window("Luka", id: "transcript") {
+        Window("Luka Plus", id: "transcript") {
             TranscriptWindow()
                 .environment(model)
                 .environment(\.usesGlass, model.usesGlass)
+                .environment(\.fontFamily, model.fontFamily)
                 .id(localizer.language)
         }
         .defaultSize(width: 760, height: 640)
@@ -238,6 +239,6 @@ struct MenuBarContent: View {
             NSApp.activate()
             openSettings()
         }
-        Button(tr("Quit Luka")) { NSApp.terminate(nil) }
+        Button(tr("Quit Luka") + " Plus") { NSApp.terminate(nil) }
     }
 }
