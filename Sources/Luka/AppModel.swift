@@ -86,7 +86,13 @@ final class AppModel {
     }
     /// Me / Them: with Mac audio + microphone, transcribe each on its own stream, so the microphone
     /// is always you and the Mac audio is always them. Costs a second stream.
-    var separatesSpeakers: Bool { didSet { store(separatesSpeakers, "separatesSpeakers"); routingChanged() } }
+    var separatesSpeakers: Bool {
+        didSet {
+            store(separatesSpeakers, "separatesSpeakers")
+            // It only works with both sources, so turning it on picks them; that change reroutes by itself.
+            if separatesSpeakers, audioSource != .both, mode != .threeWay { audioSource = .both } else { routingChanged() }
+        }
+    }
     /// In Me / Them mode, whether your own words are translated too, or only written down.
     var translatesMyVoice: Bool { didSet { store(translatesMyVoice, "translatesMyVoice"); if splitsBySource { streamSettingsChanged() } } }
     /// Keep the latest question someone asked above the captions.

@@ -12,6 +12,7 @@ final class Answerer {
         var files = 0
         var characters = 0
         var missing = false
+        var isFolder = false
         var id: String { path }
         var name: String { URL(fileURLWithPath: path).lastPathComponent }
     }
@@ -103,6 +104,7 @@ final class Answerer {
                 sources[i].files = stat.files
                 sources[i].characters = stat.characters
                 sources[i].missing = stat.missing
+                sources[i].isFolder = stat.isFolder
             }
             loading = false
         }
@@ -150,6 +152,7 @@ enum KnowledgeLoader {
         var files = 0
         var characters = 0
         var missing = false
+        var isFolder = false
     }
 
     struct Loaded: Sendable {
@@ -178,6 +181,7 @@ enum KnowledgeLoader {
                 stats[path] = stat
                 continue
             }
+            stat.isFolder = isDirectory.boolValue
             let root = URL(fileURLWithPath: path)
             var files: [URL] = []
             if isDirectory.boolValue {

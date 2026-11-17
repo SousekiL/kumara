@@ -32,10 +32,6 @@ struct CaptionRoot: View {
                     } else if showToolbar {
                         CaptionToolbar(namespace: glass, languagesShown: $languagesShown)
                             .onHover { setHover($0) }
-                    } else if let question {
-                        PinnedQuestion(line: question)
-                            .lukaGlassID("question", in: glass)
-                            .transition(.opacity)
                     } else if showStatus {
                         HStack(spacing: 7) {
                             Image(systemName: model.status == .paused ? "pause.fill" : model.status == .standby ? "moon.zzz.fill" : "arrow.trianglehead.2.clockwise")
@@ -49,6 +45,10 @@ struct CaptionRoot: View {
                         .lukaGlass(.regular, in: .capsule)
                         .lukaGlassID("status", in: glass)
                         .transition(.opacity)
+                    } else if let question {
+                        PinnedQuestion(line: question)
+                            .lukaGlassID("question", in: glass)
+                            .transition(.opacity)
                     }
                 }
                 .frame(height: CaptionPanelController.toolbarHeight)
@@ -492,13 +492,15 @@ struct PinnedQuestion: View {
     var body: some View {
         // Read in the caption's language unless the captions show the original too.
         let translated = line.translatedText
-        let text = model.captionShowsOriginal || translated.isEmpty ? line.original : translated
+        let full = model.captionShowsOriginal || translated.isEmpty ? line.original : translated
+        // Just the question, without whatever was said before it in the same breath.
+        let text = Questions.lastSentence(full) ?? full
         HStack(spacing: 8) {
             Image(systemName: "questionmark.bubble.fill")
                 .foregroundStyle(model.speakerColor(line.speaker))
             Text(text)
                 .lineLimit(1)
-                .truncationMode(.head)
+                .truncationMode(.tail)
             Button {
                 withAnimation(.smooth) { model.dismissedQuestion = line.id }
             } label: {
@@ -513,6 +515,7 @@ struct PinnedQuestion: View {
         .padding(.horizontal, 14)
         .frame(height: 30)
         .lukaGlass(.regular, in: .capsule)
+        .padding(.horizontal, 24)
         .help(translated.isEmpty ? line.original : line.original + "\n" + translated)
     }
 }

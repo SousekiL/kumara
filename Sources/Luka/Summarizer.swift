@@ -46,7 +46,9 @@ final class Summarizer {
         detail = SummaryDetail(rawValue: d.string(forKey: "summary.detail") ?? "") ?? .concise
         instructions = d.string(forKey: "summary.instructions") ?? ""
         fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 13
-        panelShown = d.object(forKey: "summary.panelShown") as? Bool ?? true
+        // Until the user decides, the column shows only when there is something to put in it.
+        panelShown = d.object(forKey: "summary.panelShown") as? Bool
+            ?? (d.bool(forKey: "summary.enabled") || d.bool(forKey: "answers.enabled"))
     }
 
     var endpoint: SummaryEndpoint { SummaryEndpoint(provider: provider, baseURL: baseURL, model: model.trimmingCharacters(in: .whitespaces)) }

@@ -38,7 +38,7 @@ public enum Questions {
     }
 
     /// The last sentence, with its closing mark.
-    static func lastSentence(_ text: String) -> String? {
+    public static func lastSentence(_ text: String) -> String? {
         var sentences: [String] = []
         var current = ""
         for ch in text {

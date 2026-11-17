@@ -199,6 +199,20 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Service": "服务",
+        "Choose a preset": "选择预设",
+        "The model’s name at this service": "该服务上的模型名称",
+        "One model, with its own API key, writes both the summary and the answers. A preset fills in the address and a model name to start from; check the name against the service’s current models. Ollama runs on this Mac and needs no key.": "总结和回答共用一个模型和它自己的 API 密钥。预设会填好接口地址和一个参考模型名，请按该服务当前可用的模型核对。Ollama 在本机运行，无需密钥。",
+        "Keeps the main points of the conversation beside the transcript, and revises earlier points as things develop.": "在转写旁边保留对话要点，并随对话进展修订前面的内容。",
+        "When someone else asks a question, a short answer with hints appears beside the transcript. With Me / Them on, only Them’s questions are answered.": "别人提问时，转写旁边会出现简短回答和提示。开启“我 / 对方”后只回答对方的问题。",
+        "Remove": "移除",
+        "Display": "显示",
+        "The language and text size of the summary and the answers.": "总结和回答的语言与字号。",
+        "The microphone is always you and the Mac audio is everyone else. Turning this on switches the input to Mac Audio + Microphone and runs a second Soniox stream, so it costs about twice as much while on. Wear headphones, or the microphone hears the other side too.": "麦克风固定是你，Mac 音频固定是对方。开启后输入会切换为“Mac 音频 + 麦克风”，并多开一条 Soniox 连接，费用约为两倍。请戴耳机，否则麦克风也会收到对方的声音。",
+        "%d new": "%d 条新",
+        "Answering…": "正在回答…",
+        "Copy Answer": "复制回答",
+        "Copied answer": "已复制回答",
         "Assistant": "助手",
         "Answers": "回答",
         "Using your knowledge base": "正在使用你的知识库",

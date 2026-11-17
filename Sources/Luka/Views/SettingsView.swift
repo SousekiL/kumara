@@ -8,9 +8,10 @@ struct SettingsView: View {
             Tab(tr("General"), systemImage: "gearshape") { GeneralSettings() }
             Tab(tr("Captions"), systemImage: "captions.bubble") { CaptionSettings() }
             Tab(tr("Assistant"), systemImage: "text.badge.star") { SummarySettings() }
+            Tab(tr("Usage"), systemImage: "chart.bar") { UsageSettings() }
             Tab(tr("Shortcuts"), systemImage: "command") { ShortcutSettings() }
         }
-        .frame(width: 500)
+        .frame(width: 520)
     }
 }
 
@@ -65,49 +66,8 @@ private struct GeneralSettings: View {
             } footer: {
                 Text(model.separatesSpeakers && !model.splitsBySource
                      ? tr("Me / Them needs Mac Audio + Microphone, and doesn’t apply in three-way mode.")
-                     : tr("With Mac Audio + Microphone, the microphone is always you and the Mac audio is everyone else. This runs a second Soniox stream, so it costs about twice as much while on."))
+                     : tr("The microphone is always you and the Mac audio is everyone else. Turning this on switches the input to Mac Audio + Microphone and runs a second Soniox stream, so it costs about twice as much while on. Wear headphones, or the microphone hears the other side too."))
             }
-            Section {
-                LabeledContent(tr("This session")) { Text(model.sessionUsage.summary).monospacedDigit() }
-                LabeledContent(tr("This month")) { Text(model.monthUsage.summary).monospacedDigit() }
-                LabeledContent(tr("Last month")) { Text(model.lastMonthUsage.summary).monospacedDigit() }
-            } header: {
-                Text(tr("Usage in Luka"))
-            } footer: {
-                Text(tr("Estimated from Soniox’s published rates: $0.12 per hour transcribed, $0.18 per hour translated, per stream. Your Soniox console has the exact bill."))
-            }
-            Section {
-                LabeledContent(tr("Balance")) {
-                    if let b = model.accountBalance {
-                        Text(b.invoiced ? tr("Invoiced") : String(format: "$%.2f", b.availableUSD))
-                            .monospacedDigit()
-                            .foregroundStyle(b.exhausted ? Color.red : Color.secondary)
-                    } else {
-                        Text(model.orgKey.isEmpty ? tr("Needs an organization key") : "—").foregroundStyle(.secondary)
-                    }
-                }
-                LabeledContent(tr("This month, all apps")) {
-                    Text(model.accountMonthCost.map { String(format: "$%.2f", $0) } ?? "—")
-                        .monospacedDigit().foregroundStyle(.secondary)
-                }
-                SecureField(tr("Organization API key"), text: $model.orgKey, prompt: Text(verbatim: "snx_org_…"))
-                HStack {
-                    if let error = model.accountError {
-                        Text(error).foregroundStyle(.red).lineLimit(2)
-                    } else if let at = model.accountCheckedAt {
-                        Text(String(format: tr("Checked %@"), at.formatted(date: .omitted, time: .shortened)))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button(tr("Refresh")) { model.refreshAccount() }
-                }
-                .font(.callout)
-            } header: {
-                Text(tr("Soniox account"))
-            } footer: {
-                Text(tr("This month’s cost comes from your API key and counts everything that key’s project used, in any app. The prepaid balance needs an organization API key: Soniox Console › Settings › Organization API keys, with read access to billing."))
-            }
-            .onAppear { model.refreshAccount() }
             Section {
                 Toggle(tr("Pause when it’s quiet"), isOn: $model.pausesWhenQuiet)
             } footer: {
@@ -306,26 +266,95 @@ private struct ShortcutSettings: View {
     }
 }
 
+private struct UsageSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Form {
+            Section {
+                LabeledContent(tr("This session")) { Text(model.sessionUsage.summary).monospacedDigit() }
+                LabeledContent(tr("This month")) { Text(model.monthUsage.summary).monospacedDigit() }
+                LabeledContent(tr("Last month")) { Text(model.lastMonthUsage.summary).monospacedDigit() }
+            } header: {
+                Text(tr("Usage in Luka"))
+            } footer: {
+                Text(tr("Estimated from Soniox’s published rates: $0.12 per hour transcribed, $0.18 per hour translated, per stream. Your Soniox console has the exact bill."))
+            }
+            Section {
+                LabeledContent(tr("Balance")) {
+                    if let b = model.accountBalance {
+                        Text(b.invoiced ? tr("Invoiced") : String(format: "$%.2f", b.availableUSD))
+                            .monospacedDigit()
+                            .foregroundStyle(b.exhausted ? Color.red : Color.secondary)
+                    } else {
+                        Text(model.orgKey.isEmpty ? tr("Needs an organization key") : "—").foregroundStyle(.secondary)
+                    }
+                }
+                LabeledContent(tr("This month, all apps")) {
+                    Text(model.accountMonthCost.map { String(format: "$%.2f", $0) } ?? "—")
+                        .monospacedDigit().foregroundStyle(.secondary)
+                }
+                SecureField(tr("Organization API key"), text: $model.orgKey, prompt: Text(verbatim: "snx_org_…"))
+                HStack {
+                    if let error = model.accountError {
+                        Text(error).foregroundStyle(.red).lineLimit(2)
+                    } else if let at = model.accountCheckedAt {
+                        Text(String(format: tr("Checked %@"), at.formatted(date: .omitted, time: .shortened)))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(tr("Refresh")) { model.refreshAccount() }
+                }
+                .font(.callout)
+            } header: {
+                Text(tr("Soniox account"))
+            } footer: {
+                Text(tr("This month’s cost comes from your API key and counts everything that key’s project used, in any app. The prepaid balance needs an organization API key: Soniox Console › Settings › Organization API keys, with read access to billing."))
+            }
+            .onAppear { model.refreshAccount() }
+        }
+        .formStyle(.grouped)
+        .frame(height: 470)
+    }
+}
+
 private struct SummarySettings: View {
     @Environment(AppModel.self) private var model
+
+    /// Common services, so nobody has to look up a base URL. The model name is only a starting point.
+    private static let presets: [(name: String, provider: SummaryProvider, baseURL: String, model: String)] = [
+        ("OpenAI", .openAI, "", "gpt-4.1-mini"),
+        ("Claude (Anthropic)", .anthropic, "", "claude-haiku-4-5"),
+        ("DeepSeek", .openAI, "https://api.deepseek.com/v1", "deepseek-chat"),
+        ("Qwen (DashScope)", .openAI, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
+        ("OpenRouter", .openAI, "https://openrouter.ai/api/v1", ""),
+        ("Ollama", .openAI, "http://localhost:11434/v1", ""),
+    ]
 
     var body: some View {
         @Bindable var summarizer = model.summarizer
         @Bindable var answerer = model.answerer
         Form {
             Section {
-                Toggle(tr("Summarize while listening"), isOn: $summarizer.enabled)
-            } footer: {
-                Text(tr("A language model of your choice keeps a summary of the conversation in the transcript window, updating as people talk and rewriting earlier points as things develop. The transcript text is sent to that model’s provider."))
-            }
-            Section {
+                LabeledContent(tr("Service")) {
+                    Menu(tr("Choose a preset")) {
+                        ForEach(Self.presets, id: \.name) { preset in
+                            Button(preset.name) {
+                                summarizer.provider = preset.provider
+                                summarizer.baseURL = preset.baseURL
+                                summarizer.model = preset.model
+                            }
+                        }
+                    }
+                    .fixedSize()
+                }
                 Picker(tr("API type"), selection: $summarizer.provider) {
                     Text(tr("OpenAI-compatible")).tag(SummaryProvider.openAI)
                     Text(tr("Anthropic (Claude)")).tag(SummaryProvider.anthropic)
                 }
                 TextField(tr("Base URL"), text: $summarizer.baseURL, prompt: Text(verbatim: summarizer.provider.defaultBaseURL))
-                TextField(tr("Model"), text: $summarizer.model,
-                          prompt: Text(verbatim: summarizer.provider == .anthropic ? "claude-haiku-4-5" : "gpt-4.1-mini, deepseek-chat, qwen-plus…"))
+                TextField(tr("Model"), text: $summarizer.model, prompt: Text(tr("The model’s name at this service")))
                 SecureField(tr("API key"), text: $summarizer.apiKey)
                 HStack {
                     if summarizer.testing {
@@ -335,54 +364,59 @@ private struct SummarySettings: View {
                     }
                     Spacer()
                     Button(tr("Test")) { summarizer.test() }
-                        .disabled(summarizer.testing)
+                        .disabled(summarizer.testing || !summarizer.isConfigured)
                 }
                 .font(.callout)
             } header: {
                 Text(tr("Model"))
             } footer: {
-                Text(tr("OpenAI-compatible covers OpenAI, DeepSeek (https://api.deepseek.com/v1), Qwen (https://dashscope-intl.aliyuncs.com/compatible-mode/v1), OpenRouter (https://openrouter.ai/api/v1) and Ollama (http://localhost:11434/v1, no key). Leave Base URL empty for the provider’s default."))
+                Text(tr("One model, with its own API key, writes both the summary and the answers. A preset fills in the address and a model name to start from; check the name against the service’s current models. Ollama runs on this Mac and needs no key."))
             }
             Section {
-                Picker(tr("Detail"), selection: $summarizer.detail) {
-                    Text(tr("Concise")).tag(SummaryDetail.concise)
-                    Text(tr("Standard")).tag(SummaryDetail.standard)
-                    Text(tr("Detailed")).tag(SummaryDetail.detailed)
-                }
-                .pickerStyle(.segmented)
-                LabeledContent(tr("Text size")) {
-                    HStack {
-                        Slider(value: $summarizer.fontSize, in: Summarizer.fontRange, step: 1)
-                        Text(verbatim: "\(Int(summarizer.fontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
+                Toggle(tr("Summarize while listening"), isOn: $summarizer.enabled)
+                Group {
+                    Picker(tr("Detail"), selection: $summarizer.detail) {
+                        Text(tr("Concise")).tag(SummaryDetail.concise)
+                        Text(tr("Standard")).tag(SummaryDetail.standard)
+                        Text(tr("Detailed")).tag(SummaryDetail.detailed)
                     }
+                    .pickerStyle(.segmented)
+                    TextField(tr("Extra instructions"), text: $summarizer.instructions,
+                              prompt: Text(tr("Optional, e.g. “This is an actuarial interview; list every technical question.”")), axis: .vertical)
+                        .lineLimit(2...5)
                 }
-                TextField(tr("Extra instructions"), text: $summarizer.instructions,
-                          prompt: Text(tr("Optional, e.g. “This is an actuarial interview; list every technical question.”")), axis: .vertical)
-                    .lineLimit(2...5)
-                Picker(tr("Summary language"), selection: $summarizer.language) {
-                    Text(tr("Same as translation")).tag("")
-                    Divider()
-                    ForEach(Languages.ordered(in: Localizer.shared.locale), id: \.self) {
-                        Text(Languages.name($0, in: Localizer.shared.locale)).tag($0)
-                    }
-                }
+                .disabled(!summarizer.enabled)
             } header: {
                 Text(tr("Summary"))
+            } footer: {
+                Text(tr("Keeps the main points of the conversation beside the transcript, and revises earlier points as things develop."))
+            }
+            .onChange(of: summarizer.enabled) {
+                if summarizer.enabled { summarizer.panelShown = true }
             }
             Section {
                 Toggle(tr("Answer questions as they’re asked"), isOn: $answerer.enabled)
                 TextField(tr("Extra instructions"), text: $answerer.instructions,
                           prompt: Text(tr("Optional, e.g. “Answer in first person, as a candidate for an actuarial analyst role.”")), axis: .vertical)
                     .lineLimit(2...5)
+                    .disabled(!answerer.enabled)
             } header: {
                 Text(tr("Answers"))
             } footer: {
-                Text(tr("When someone else asks a question, the same model writes a short answer with hints in the Answers column, in the summary’s language. With Me / Them on, only Them’s questions are answered."))
+                Text(tr("When someone else asks a question, a short answer with hints appears beside the transcript. With Me / Them on, only Them’s questions are answered."))
+            }
+            .onChange(of: answerer.enabled) {
+                if answerer.enabled {
+                    summarizer.panelShown = true
+                    answerer.panelShowsAnswers = true
+                }
             }
             Section {
                 ForEach(answerer.sources) { source in
                     HStack(spacing: 8) {
-                        Image(systemName: source.files > 1 ? "folder" : "doc.text").foregroundStyle(.secondary)
+                        Image(systemName: source.missing ? "questionmark.folder" : source.isFolder ? "folder" : "doc.text")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18)
                         Text(source.name).lineLimit(1).truncationMode(.middle).help(source.path)
                         Spacer()
                         Text(source.missing ? tr("Not found")
@@ -391,12 +425,13 @@ private struct SummarySettings: View {
                             .foregroundStyle(source.missing ? Color.red : Color.secondary)
                         Button { answerer.remove(source) } label: { Image(systemName: "minus.circle") }
                             .buttonStyle(.borderless)
+                            .help(tr("Remove"))
                     }
                 }
                 HStack {
                     Button(tr("Add Files or Folders…")) { answerer.pickSources() }
                     Button(tr("Reload")) { answerer.reload() }
-                        .disabled(answerer.sources.isEmpty)
+                        .disabled(answerer.sources.isEmpty || answerer.loading)
                     Spacer()
                     if answerer.loading { ProgressView().controlSize(.small) }
                 }
@@ -407,6 +442,25 @@ private struct SummarySettings: View {
                 Text(tr("Knowledge base"))
             } footer: {
                 Text(tr("Answers use this first, and the model’s own knowledge only for what it doesn’t cover. Folders are read where they are (Markdown, text, PDF, Word), including subfolders, and reread at the start of every session, so an existing notes or memory folder works as it is. The excerpts that match a question are sent to the model’s provider."))
+            }
+            Section {
+                Picker(tr("Language"), selection: $summarizer.language) {
+                    Text(tr("Same as translation")).tag("")
+                    Divider()
+                    ForEach(Languages.ordered(in: Localizer.shared.locale), id: \.self) {
+                        Text(Languages.name($0, in: Localizer.shared.locale)).tag($0)
+                    }
+                }
+                LabeledContent(tr("Text size")) {
+                    HStack {
+                        Slider(value: $summarizer.fontSize, in: Summarizer.fontRange, step: 1)
+                        Text(verbatim: "\(Int(summarizer.fontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
+                    }
+                }
+            } header: {
+                Text(tr("Display"))
+            } footer: {
+                Text(tr("The language and text size of the summary and the answers."))
             }
         }
         .formStyle(.grouped)
