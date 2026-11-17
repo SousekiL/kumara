@@ -7,6 +7,7 @@ struct SettingsView: View {
         TabView {
             Tab(tr("General"), systemImage: "gearshape") { GeneralSettings() }
             Tab(tr("Captions"), systemImage: "captions.bubble") { CaptionSettings() }
+            Tab(tr("Summary"), systemImage: "text.badge.star") { SummarySettings() }
             Tab(tr("Shortcuts"), systemImage: "command") { ShortcutSettings() }
         }
         .frame(width: 500)
@@ -71,10 +72,42 @@ private struct GeneralSettings: View {
                 LabeledContent(tr("This month")) { Text(model.monthUsage.summary).monospacedDigit() }
                 LabeledContent(tr("Last month")) { Text(model.lastMonthUsage.summary).monospacedDigit() }
             } header: {
-                Text(tr("Usage"))
+                Text(tr("Usage in Luka"))
             } footer: {
                 Text(tr("Estimated from Soniox’s published rates: $0.12 per hour transcribed, $0.18 per hour translated, per stream. Your Soniox console has the exact bill."))
             }
+            Section {
+                LabeledContent(tr("Balance")) {
+                    if let b = model.accountBalance {
+                        Text(b.invoiced ? tr("Invoiced") : String(format: "$%.2f", b.availableUSD))
+                            .monospacedDigit()
+                            .foregroundStyle(b.exhausted ? Color.red : Color.secondary)
+                    } else {
+                        Text(model.orgKey.isEmpty ? tr("Needs an organization key") : "—").foregroundStyle(.secondary)
+                    }
+                }
+                LabeledContent(tr("This month, all apps")) {
+                    Text(model.accountMonthCost.map { String(format: "$%.2f", $0) } ?? "—")
+                        .monospacedDigit().foregroundStyle(.secondary)
+                }
+                SecureField(tr("Organization API key"), text: $model.orgKey, prompt: Text(verbatim: "snx_org_…"))
+                HStack {
+                    if let error = model.accountError {
+                        Text(error).foregroundStyle(.red).lineLimit(2)
+                    } else if let at = model.accountCheckedAt {
+                        Text(String(format: tr("Checked %@"), at.formatted(date: .omitted, time: .shortened)))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(tr("Refresh")) { model.refreshAccount() }
+                }
+                .font(.callout)
+            } header: {
+                Text(tr("Soniox account"))
+            } footer: {
+                Text(tr("This month’s cost comes from your API key and counts everything that key’s project used, in any app. The prepaid balance needs an organization API key: Soniox Console › Settings › Organization API keys, with read access to billing."))
+            }
+            .onAppear { model.refreshAccount() }
             Section {
                 Toggle(tr("Pause when it’s quiet"), isOn: $model.pausesWhenQuiet)
             } footer: {
@@ -256,6 +289,57 @@ private struct ShortcutSettings: View {
             Section(tr("In Luka")) {
                 ForEach(local, id: \.0) { row in
                     LabeledContent(row.0) { KeyCaps(keys: row.1) }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .frame(height: 470)
+    }
+}
+
+private struct SummarySettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var summarizer = model.summarizer
+        Form {
+            Section {
+                Toggle(tr("Summarize while listening"), isOn: $summarizer.enabled)
+            } footer: {
+                Text(tr("A language model of your choice keeps a summary of the conversation in the transcript window, updating as people talk and rewriting earlier points as things develop. The transcript text is sent to that model’s provider."))
+            }
+            Section {
+                Picker(tr("API type"), selection: $summarizer.provider) {
+                    Text(tr("OpenAI-compatible")).tag(SummaryProvider.openAI)
+                    Text(tr("Anthropic (Claude)")).tag(SummaryProvider.anthropic)
+                }
+                TextField(tr("Base URL"), text: $summarizer.baseURL, prompt: Text(verbatim: summarizer.provider.defaultBaseURL))
+                TextField(tr("Model"), text: $summarizer.model,
+                          prompt: Text(verbatim: summarizer.provider == .anthropic ? "claude-haiku-4-5" : "gpt-4.1-mini, deepseek-chat, qwen-plus…"))
+                SecureField(tr("API key"), text: $summarizer.apiKey)
+                HStack {
+                    if summarizer.testing {
+                        ProgressView().controlSize(.small)
+                    } else if let result = summarizer.testResult {
+                        Text(result).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer()
+                    Button(tr("Test")) { summarizer.test() }
+                        .disabled(summarizer.testing)
+                }
+                .font(.callout)
+            } header: {
+                Text(tr("Model"))
+            } footer: {
+                Text(tr("OpenAI-compatible covers OpenAI, DeepSeek (https://api.deepseek.com/v1), Qwen (https://dashscope-intl.aliyuncs.com/compatible-mode/v1), OpenRouter (https://openrouter.ai/api/v1) and Ollama (http://localhost:11434/v1, no key). Leave Base URL empty for the provider’s default."))
+            }
+            Section {
+                Picker(tr("Summary language"), selection: $summarizer.language) {
+                    Text(tr("Same as translation")).tag("")
+                    Divider()
+                    ForEach(Languages.ordered(in: Localizer.shared.locale), id: \.self) {
+                        Text(Languages.name($0, in: Localizer.shared.locale)).tag($0)
+                    }
                 }
             }
         }

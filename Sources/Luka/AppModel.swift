@@ -33,6 +33,10 @@ final class AppModel {
     @ObservationIgnored var closeTranscript: () -> Void = {}
     @ObservationIgnored var openSettings: () -> Void = {}
     @ObservationIgnored let client = SonioxStreams()
+    /// The live summary, on its own model and key.
+    let summarizer = Summarizer()
+    @ObservationIgnored private var summaryTimer: Timer?
+    @ObservationIgnored private var accountTimer: Timer?
     @ObservationIgnored let audio = AudioPipeline()
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private var idleDisconnect: DispatchWorkItem?
@@ -96,6 +100,19 @@ final class AppModel {
     private(set) var lastMonthUsage = UsageTotals()
     /// Counted on every chunk, published every few seconds so views don't redraw ten times a second.
     @ObservationIgnored private var pendingUsage = UsageTotals()
+
+    // What Soniox itself reports: this project's real cost this month (project key),
+    // and the prepaid balance (needs an organization key, snx_org_…).
+    private(set) var accountMonthCost: Double?
+    private(set) var accountBalance: SonioxAccount.Balance?
+    private(set) var accountError: String?
+    private(set) var accountCheckedAt: Date?
+    var orgKey: String {
+        didSet {
+            SecretStore.save(orgKey, slot: "org")
+            if orgKey != oldValue { accountBalance = nil; refreshAccount() }
+        }
+    }
     /// Core Audio UID of the chosen input device; nil follows the system default.
     var microphone: String? {
         didSet {
@@ -175,6 +192,7 @@ final class AppModel {
         separatesSpeakers = d.bool(forKey: "separatesSpeakers")
         translatesMyVoice = d.object(forKey: "translatesMyVoice") == nil ? true : d.bool(forKey: "translatesMyVoice")
         pinsQuestions = d.bool(forKey: "pinsQuestions")
+        orgKey = SecretStore.read("org") ?? ""
         microphone = d.string(forKey: "microphone")
         pausesWhenQuiet = d.object(forKey: "pausesWhenQuiet") == nil ? true : d.bool(forKey: "pausesWhenQuiet")
         quiet = QuietGate(sleepAfterSeconds: d.object(forKey: "quietSeconds") == nil ? 180 : d.integer(forKey: "quietSeconds"))
@@ -218,6 +236,13 @@ final class AppModel {
         store.track(transcript)
         selectedID = transcript.id
         if hasKey, storedRegion == nil { checkKey(after: .zero) }
+        summaryTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tickSummary() }
+        }
+        accountTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshAccount() }
+        }
+        refreshAccount()
         autosave = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.saveLive()
@@ -392,6 +417,9 @@ final class AppModel {
         transcript.clearProvisional()
         store.save(transcript)
         flushUsage()
+        summarizer.catchUp(transcript, languageName: summaryLanguageName, name: { [weak self] in self?.speakerName($0) ?? "" })
+        // Soniox's own numbers lag a little; look again once this session has been billed.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.refreshAccount() }
     }
 
     func saveLive() {
@@ -657,6 +685,57 @@ final class AppModel {
         let hasChannels = transcript.visibleSpeakers.contains { Channel($0.id) != nil }
         guard let line = transcript.pinnedQuestion(channelsOnly: hasChannels), line.id != dismissedQuestion else { return nil }
         return line
+    }
+
+    // MARK: Live summary
+
+    /// The summary's language, in English for the prompt. Empty setting follows the translation.
+    var summaryLanguageName: String {
+        let code = !summarizer.language.isEmpty ? summarizer.language
+            : mode == .transcribe ? (source == "auto" ? Localizer.shared.resolved.rawValue : source)
+            : mode == .twoWay ? languageB : target
+        if code == "zh" { return "Simplified Chinese" }
+        return Locale(identifier: "en").localizedString(forLanguageCode: code) ?? code
+    }
+
+    private func tickSummary() {
+        guard summarizer.enabled, [.live, .standby, .paused].contains(status) else { return }
+        summarizer.tick(transcript, languageName: summaryLanguageName, name: { [weak self] in self?.speakerName($0) ?? "" })
+    }
+
+    func refreshSummary(_ t: Transcript) {
+        summarizer.refresh(t, languageName: summaryLanguageName, name: { [weak self] in self?.speakerName($0, in: t) ?? "" })
+    }
+
+    // MARK: Soniox account
+
+    func refreshAccount() {
+        let key = trimmedKey
+        let org = orgKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty || !org.isEmpty else { return }
+        let host = region.apiHost
+        Task {
+            var error: String?
+            if !key.isEmpty {
+                do {
+                    let (data, _) = try await URLSession.shared.data(for: SonioxAccount.monthCostRequest(apiKey: key, apiHost: host))
+                    accountMonthCost = try SonioxAccount.parseMonthCost(data)
+                } catch let e {
+                    error = e.localizedDescription
+                }
+            }
+            if !org.isEmpty {
+                do {
+                    let (data, _) = try await URLSession.shared.data(for: SonioxAccount.balanceRequest(orgKey: org))
+                    accountBalance = try SonioxAccount.parseBalance(data)
+                } catch let e {
+                    accountBalance = nil
+                    error = e.localizedDescription
+                }
+            }
+            accountError = error
+            accountCheckedAt = .now
+        }
     }
 
     // MARK: Usage

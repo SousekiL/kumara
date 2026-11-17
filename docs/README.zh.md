@@ -106,6 +106,14 @@ curl -fsSL https://raw.githubusercontent.com/StableFluffy/luka/main/install.sh |
 
 设置 › 通用 › **用量** 显示本次会话、本月、上月发送给 Soniox 的音频时长和估算费用（每条连接转写 $0.12/小时、翻译 $0.18/小时）。菜单栏显示本月合计。
 
+## 实时总结
+
+设置 › **总结**：可选任意 OpenAI 兼容模型（OpenAI、DeepSeek、通义千问、OpenRouter、Ollama…）或 Claude，使用单独的 API 密钥。转写时，转写窗口右侧会实时显示对话总结（要点、结论、问题与下一步）：每积累几百字更新一次，每隔几次根据完整转写重写，前面的内容也会随之修订。点 ↻ 立即重写；总结随会话保存，导出 Markdown 时放在开头。转写文字会发送给模型服务商；用 Ollama 则不离开本机。
+
+## Soniox 账户
+
+设置 › 通用 › **Soniox 账户** 显示 Soniox 官方数据：本月该密钥所属项目的实际费用（含所有应用），以及填入组织 API 密钥（`snx_org_…`）后的预付余额，余额也会显示在菜单栏。
+
 ## 隐私
 
 音频通过 WebSocket 直接从 Mac 发送到 Soniox，没有 Luka 服务器。

@@ -106,6 +106,14 @@ Settings › General › **Meetings and interviews**, also in the menu bar:
 
 Settings › General › **Usage** shows audio sent to Soniox this session, this month and last month, with an estimated cost ($0.12 per hour transcribed, $0.18 per hour translated, per stream). The menu bar shows this month's total.
 
+## Live summary
+
+Settings › **Summary**: pick any OpenAI-compatible model (OpenAI, DeepSeek, Qwen, OpenRouter, Ollama…) or Claude, with its own API key. While you listen, a column beside the transcript keeps a summary (key points, decisions, questions and next steps) that updates every few hundred characters and is rewritten from the transcript every few updates, so earlier points get revised. ↻ rewrites now; the summary is saved with the session and leads the Markdown export. The transcript text goes to the model's provider; use Ollama to keep it on your Mac.
+
+## Soniox account
+
+Settings › General › **Soniox account** shows what Soniox itself reports: this month's cost for your key's project (all apps), and, with an organization API key (`snx_org_…`), the prepaid balance, also shown in the menu bar.
+
 ## Privacy
 
 Audio goes straight from your Mac to Soniox over WebSocket; there is no Luka server.

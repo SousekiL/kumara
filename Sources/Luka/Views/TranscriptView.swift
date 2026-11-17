@@ -188,6 +188,10 @@ struct SessionView: View {
             .animation(.smooth, value: transcript.isEmpty)
             .safeAreaInset(edge: .bottom) { bottomBar }
             .overlay(alignment: .top) { noticeView }
+            .inspector(isPresented: Binding(get: { model.summarizer.panelShown }, set: { model.summarizer.panelShown = $0 })) {
+                SummaryPanel(transcript: transcript)
+                    .inspectorColumnWidth(min: 240, ideal: 300, max: 440)
+            }
             .toolbar { toolbarContent }
             .navigationTitle(model.title(transcript))
             .toolbar(removing: .title)
@@ -366,6 +370,10 @@ struct SessionView: View {
                 Label(tr("Settings…"), systemImage: "gearshape")
             }
             .help(tr("Settings…") + "  ⌘,")
+            Toggle(isOn: Binding(get: { model.summarizer.panelShown }, set: { model.summarizer.panelShown = $0 }).animation(.smooth)) {
+                Label(tr("Summary"), systemImage: "sidebar.trailing")
+            }
+            .help(tr("Live Summary"))
         }
     }
 

@@ -9,22 +9,26 @@ enum SecretStore {
     private static var directory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Luka", isDirectory: true)
     }
-    private static var secretURL: URL { directory.appendingPathComponent("credentials") }
+    /// Each secret is its own file: "credentials" holds the Soniox key, others are named by `slot`.
+    private static func secretURL(_ slot: String) -> URL {
+        directory.appendingPathComponent(slot.isEmpty ? "credentials" : "credentials-\(slot)")
+    }
     private static var saltURL: URL { directory.appendingPathComponent("salt") }
 
-    static func read() -> String? {
-        guard let blob = try? Data(contentsOf: secretURL), let salt = try? Data(contentsOf: saltURL),
+    static func read(_ slot: String = "") -> String? {
+        guard let blob = try? Data(contentsOf: secretURL(slot)), let salt = try? Data(contentsOf: saltURL),
               let box = try? AES.GCM.SealedBox(combined: blob),
               let plain = try? AES.GCM.open(box, using: key(salt: salt)) else { return nil }
         let value = String(decoding: plain, as: UTF8.self)
         return value.isEmpty ? nil : value
     }
 
-    static func save(_ value: String) {
+    static func save(_ value: String, slot: String = "") {
+        let url = secretURL(slot)
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let fm = FileManager.default
         guard !trimmed.isEmpty else {
-            try? fm.removeItem(at: secretURL)
+            try? fm.removeItem(at: url)
             return
         }
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -34,7 +38,7 @@ enum SecretStore {
             return fresh
         }()
         guard let sealed = try? AES.GCM.seal(Data(trimmed.utf8), using: key(salt: salt)).combined else { return }
-        write(sealed, to: secretURL)
+        write(sealed, to: url)
     }
 
     private static func write(_ data: Data, to url: URL) {

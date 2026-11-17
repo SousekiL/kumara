@@ -218,6 +218,9 @@ struct MenuBarContent: View {
         Button((model.isListening ? tr("Pause") : tr("Start Listening")) + "  ⌃⌥R") { model.toggleListening() }
         Text(model.status.label)
         Text(tr("This month") + ": " + model.monthUsage.summary)
+        if let balance = model.accountBalance, !balance.invoiced {
+            Text(tr("Soniox balance") + String(format: ": $%.2f", balance.availableUSD))
+        }
         Divider()
         Toggle(tr("Captions"), isOn: Binding(get: { model.captionsVisible }, set: { model.setCaptions($0) }))
         Toggle(tr("Lock Captions"), isOn: Binding(get: { model.locked }, set: { model.lock($0) }))

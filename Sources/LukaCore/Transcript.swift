@@ -110,6 +110,8 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var nextLineID: Int
     public var nextOrdinal: Int
     public var nextColor: Int
+    /// The live summary; absent in sessions saved before summaries existed.
+    public var summary: LiveSummary?
 }
 
 @MainActor
@@ -131,6 +133,8 @@ public final class Transcript: Identifiable {
     public private(set) var speakerOrder: [SpeakerID] = []
     public private(set) var provisional: Provisional?
     public private(set) var epoch = 0
+    /// Kept up to date by the summarizer while listening, and saved with the session.
+    public var summary: LiveSummary? { didSet { if summary != oldValue { touch() } } }
 
     /// The line still growing, per channel; "" is the single stream of the normal modes.
     @ObservationIgnored private var openLines: [String: Int] = [:]
@@ -183,12 +187,14 @@ public final class Transcript: Identifiable {
         nextLineID = s.nextLineID
         nextOrdinal = s.nextOrdinal
         nextColor = s.nextColor
+        summary = s.summary
     }
 
     public var snapshot: TranscriptSnapshot {
         TranscriptSnapshot(id: id, title: title, createdAt: createdAt, updatedAt: updatedAt, lines: lines,
                            speakers: speakerOrder.compactMap { speakers[$0] }, speakerOrder: speakerOrder,
-                           epoch: epoch, nextLineID: nextLineID, nextOrdinal: nextOrdinal, nextColor: nextColor)
+                           epoch: epoch, nextLineID: nextLineID, nextOrdinal: nextOrdinal, nextColor: nextColor,
+                           summary: summary)
     }
 
     /// Stamps the session with the time listening first starts.

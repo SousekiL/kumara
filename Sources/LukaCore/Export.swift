@@ -6,6 +6,13 @@ extension Transcript {
         let time = DateFormatter()
         time.dateFormat = "HH:mm:ss"
         var out = "# \(title)\n"
+        if let summary, !summary.text.isEmpty {
+            // The summary's own sections sit one level below the export's.
+            let body = summary.text.split(separator: "\n", omittingEmptySubsequences: false)
+                .map { $0.hasPrefix("## ") ? "###" + $0.dropFirst(2) : String($0) }
+                .joined(separator: "\n")
+            out += "\n## Summary\n\n\(body)\n\n---\n"
+        }
         for turn in turns {
             let who = turn.speaker.map(name) ?? "—"
             let when = turn.lines.first.map { time.string(from: $0.startedAt) } ?? ""
