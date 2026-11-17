@@ -21,15 +21,16 @@ struct SummaryPanel: View {
             HStack(spacing: 8) {
                 Picker("", selection: $answerer.panelShowsAnswers) {
                     Text(tr("Summary")).tag(false)
-                    Text(unseen > 0 ? tr("Answers") + " · " + String(format: tr("%d new"), unseen) : tr("Answers")).tag(true)
+                    // A fixed-width label: a count that comes and goes would resize the whole header.
+                    Text(unseen > 0 ? tr("Answers") + " •" : tr("Answers")).tag(true)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .fixedSize()
+                .frame(maxWidth: 220)
                 Spacer(minLength: 4)
                 // The kind of conversation: how the summary is kept, how readily questions are answered.
                 Picker("", selection: $summarizer.mode) {
-                    ForEach(AssistantMode.allCases, id: \.self) { Label($0.title, systemImage: $0.symbol).tag($0) }
+                    ForEach(AssistantMode.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
@@ -40,7 +41,7 @@ struct SummaryPanel: View {
             .padding(.top, 10)
             if answerer.panelShowsAnswers {
                 bar { answersStatus } actions: {
-                    if answerer.working { ProgressView().controlSize(.small) }
+                    ProgressView().controlSize(.small).opacity(answerer.working ? 1 : 0)
                     Toggle("", isOn: $answerer.enabled)
                         .toggleStyle(.switch).controlSize(.mini).labelsHidden()
                         .help(tr("Answer questions as they’re asked"))
@@ -54,7 +55,7 @@ struct SummaryPanel: View {
                 .onChange(of: transcript.answers.count, initial: true) { seenAnswers = transcript.answers.count }
             } else {
                 bar { summaryStatus } actions: {
-                    if summarizer.working { ProgressView().controlSize(.small) }
+                    ProgressView().controlSize(.small).opacity(summarizer.working ? 1 : 0)
                     Button { model.refreshSummary(transcript) } label: { Image(systemName: "arrow.clockwise") }
                         .help(tr("Write the notes again from the whole transcript"))
                         .disabled(!summarizer.isConfigured || summarizer.working || transcript.lines.isEmpty)
@@ -81,7 +82,7 @@ struct SummaryPanel: View {
                 .onChange(of: transcript.summary?.text) {
                     // An overview is rewritten whole, so there is no bottom to follow.
                     guard followingNotes, !summarizer.mode.rewritesSummary else { return }
-                    withAnimation(.smooth(duration: 0.3)) { notesPosition.scrollTo(edge: .bottom) }
+                    notesPosition.scrollTo(edge: .bottom)
                 }
             }
         }
@@ -97,12 +98,13 @@ struct SummaryPanel: View {
             status()
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
             actions()
                 .buttonStyle(.borderless)
         }
         .padding(.horizontal, 14)
-        .frame(minHeight: 30)
+        .frame(height: 30)
         .padding(.vertical, 4)
     }
 
@@ -125,7 +127,7 @@ struct SummaryPanel: View {
 
     @ViewBuilder private var summaryStatus: some View {
         if let error = summarizer.lastError {
-            Text(error).foregroundStyle(.red).lineLimit(2).help(error)
+            Text(error).foregroundStyle(.red).help(error)
         } else if let summary = transcript.summary {
             TimelineView(.periodic(from: .now, by: 5)) { context in
                 Text(String(format: tr("Updated %@"), Self.ago(summary.updatedAt, now: context.date)))
@@ -154,7 +156,6 @@ struct SummaryPanel: View {
                 // While listening, the lines just added stand out and the rest steps back.
                 SummaryText(markdown: summary.text, fontSize: summarizer.fontSize, family: model.fontFamily,
                             freshFrom: model.isLive(transcript) && model.isListening ? summary.freshLine : nil)
-                    .animation(.smooth, value: summary.text)
             }
         } else if !summarizer.isConfigured {
             setupHint(tr("Pick a model for the summary in Settings › Assistant."))
@@ -173,7 +174,7 @@ struct SummaryPanel: View {
 
     @ViewBuilder private var answersStatus: some View {
         if let error = answerer.lastError {
-            Text(error).foregroundStyle(.red).lineLimit(2).help(error)
+            Text(error).foregroundStyle(.red).help(error)
         } else if answerer.working {
             Text(tr("Answering…"))
         } else if !answerer.enabled {
@@ -213,11 +214,9 @@ struct SummaryPanel: View {
                         copy(item.answer, notice: tr("Copied answer"))
                     }
                     .opacity(item.id == newest ? 1 : 0.6)
-                    .transition(.move(edge: .top).combined(with: .opacity))
                     if item.id != transcript.answers.first?.id { Divider() }
                 }
             }
-            .animation(.smooth, value: transcript.answers.count)
         } else if !summarizer.isConfigured {
             setupHint(tr("Pick a model for the answers in Settings › Assistant."))
         } else if !answerer.enabled {
@@ -269,7 +268,6 @@ struct SummaryText: View {
                 }
                 }
                 .opacity(old ? 0.62 : 1)
-                .transition(.opacity)
             }
         }
         .textSelection(.enabled)

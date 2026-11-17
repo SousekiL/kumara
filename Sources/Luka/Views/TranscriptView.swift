@@ -190,7 +190,7 @@ struct SessionView: View {
             .overlay(alignment: .top) { noticeView }
             .inspector(isPresented: Binding(get: { model.summarizer.panelShown }, set: { model.summarizer.panelShown = $0 })) {
                 SummaryPanel(transcript: transcript)
-                    .inspectorColumnWidth(min: 240, ideal: 300, max: 440)
+                    .inspectorColumnWidth(min: 300, ideal: 340, max: 480)
             }
             .toolbar { toolbarContent }
             .navigationTitle(model.title(transcript))

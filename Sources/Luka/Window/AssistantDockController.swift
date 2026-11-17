@@ -183,7 +183,7 @@ private struct DockButton: View {
                         .frame(width: 4, height: 4 + (live ? CGFloat(model.level) * (i == 1 ? 14 : 9) : 0))
                 }
             }
-            .frame(height: 18)
+            .frame(width: 24, height: 18)
             .animation(.smooth(duration: 0.18), value: model.level)
         }
         .frame(width: 40, height: 84)
