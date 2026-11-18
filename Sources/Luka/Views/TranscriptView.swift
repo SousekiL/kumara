@@ -20,10 +20,10 @@ struct TranscriptWindow: View {
         }
         .frame(minWidth: 560, minHeight: 360)
         .tint(LukaTheme.accent)
-        // Light or dark is set twice, to the same answer: on the window for AppKit's sidebar, toolbar and
-        // backgrounds, and in the environment for SwiftUI's text and colors.
-        .environment(\.colorScheme, model.transcriptColorScheme)
-        .background(WindowConfigurator(pinned: model.transcriptPinned, colorScheme: model.transcriptColorScheme))
+        // SwiftUI owns this window's appearance and resets anything set on the NSWindow directly, so the
+        // choice goes through SwiftUI. Always light or dark, never nil: nil doesn't switch back until reopened.
+        .preferredColorScheme(model.transcriptColorScheme)
+        .background(WindowConfigurator(pinned: model.transcriptPinned))
         .onAppear { model.transcriptVisible = true }
         .onDisappear { model.transcriptVisible = false }
     }
@@ -905,24 +905,14 @@ enum WindowAppearance: String, CaseIterable {
 
 struct WindowConfigurator: NSViewRepresentable {
     let pinned: Bool
-    var colorScheme: ColorScheme = .light
 
     func makeNSView(context: Context) -> NSView { NSView() }
 
     func updateNSView(_ view: NSView, context: Context) {
-        let pinned = pinned
-        let name: NSAppearance.Name = colorScheme == .dark ? .darkAqua : .aqua
         DispatchQueue.main.async {
             guard let window = view.window else { return }
             window.level = pinned ? .floating : .normal
             window.collectionBehavior = pinned ? [.canJoinAllSpaces, .fullScreenAuxiliary] : [.fullScreenPrimary]
-            guard window.appearance?.name != name else { return }
-            window.appearance = NSAppearance(named: name)
-            // Redraw everything, the window's own background included, in the new appearance.
-            window.backgroundColor = .windowBackgroundColor
-            window.contentView?.superview?.needsDisplay = true
-            window.contentView?.needsLayout = true
-            window.invalidateShadow()
         }
     }
 }
