@@ -20,7 +20,7 @@ struct TranscriptWindow: View {
         }
         .frame(minWidth: 560, minHeight: 360)
         .tint(LukaTheme.accent)
-        .background(WindowConfigurator(pinned: model.transcriptPinned))
+        .background(WindowConfigurator(pinned: model.transcriptPinned, appearance: model.windowAppearance))
         .onAppear { model.transcriptVisible = true }
         .onDisappear { model.transcriptVisible = false }
     }
@@ -366,6 +366,9 @@ struct SessionView: View {
             .help(tr("Shared Captions Window") + "  ⌘3")
             Menu {
                 Toggle(tr("Keep on Top"), isOn: $model.transcriptPinned)
+                Picker(tr("Appearance"), selection: $model.windowAppearance) {
+                    ForEach(WindowAppearance.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
                 Button(tr("Export Transcript…")) { model.exportTranscript(transcript) }
                     .disabled(transcript.lines.isEmpty)
                 Divider()
@@ -882,8 +885,31 @@ private struct SpeakerRow: View {
 }
 
 /// Reaches the hosting NSWindow for things SwiftUI scenes don't expose.
+/// Light or dark for the transcript window, independent of the system setting.
+enum WindowAppearance: String, CaseIterable {
+    case system, light, dark
+
+    var title: String {
+        switch self {
+        case .system: tr("System")
+        // Not "Light": that word is already the light font weight.
+        case .light: tr("Light mode")
+        case .dark: tr("Dark mode")
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 struct WindowConfigurator: NSViewRepresentable {
     let pinned: Bool
+    var appearance: WindowAppearance = .system
 
     func makeNSView(context: Context) -> NSView { NSView() }
 
@@ -892,6 +918,8 @@ struct WindowConfigurator: NSViewRepresentable {
             guard let window = view.window else { return }
             window.level = pinned ? .floating : .normal
             window.collectionBehavior = pinned ? [.canJoinAllSpaces, .fullScreenAuxiliary] : [.fullScreenPrimary]
+            // Set on the window itself, so going back to System follows the system again at once.
+            window.appearance = appearance.nsAppearance
         }
     }
 }

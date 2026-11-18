@@ -546,5 +546,8 @@ enum Strings {
         "Thinking…": "思考中…",
         "This conversation": "本次对话",
         "Windows": "窗口",
+        "Transcript window": "转写窗口",
+        "Light mode": "浅色",
+        "Dark mode": "深色",
     ]
 }

@@ -220,6 +220,7 @@ struct MenuBarContent: View {
         @Bindable var model = model
         Button(tr("New Transcription") + "  ⌃⌥N") { model.newSession(start: true) }
         Button((model.isListening ? tr("Pause") : tr("Start Listening")) + "  ⌃⌥R") { model.toggleListening() }
+        Button(tr("Show Transcript")) { model.openTranscript() }
         Text(model.status.label)
         Text(tr("This month") + ": " + model.monthUsage.summary)
         if let balance = model.accountBalance, !balance.invoiced {
@@ -243,7 +244,9 @@ struct MenuBarContent: View {
             Toggle(tr("Lock Captions"), isOn: Binding(get: { model.locked }, set: { model.lock($0) }))
             Toggle(tr("Floating Button"), isOn: $model.showsDockButton)
             Divider()
-            Button(tr("Show Transcript")) { model.openTranscript() }
+            Picker(tr("Transcript window"), selection: $model.windowAppearance) {
+                ForEach(WindowAppearance.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
             Button(tr("Shared Captions Window")) {
                 NSApp.activate()
                 openWindow(id: "presenter")

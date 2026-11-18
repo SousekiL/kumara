@@ -154,6 +154,10 @@ private struct CaptionSettings: View {
                 }
                 Toggle(tr("Liquid Glass"), isOn: $model.liquidGlass)
                     .disabled(!LukaGlassSupport.available)
+                Picker(tr("Transcript window"), selection: $model.windowAppearance) {
+                    ForEach(WindowAppearance.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
             } header: {
                 Text(tr("Appearance"))
             } footer: {

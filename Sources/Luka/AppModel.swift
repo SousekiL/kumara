@@ -242,6 +242,8 @@ final class AppModel {
     var transcriptFontSize: Double { didSet { store(transcriptFontSize, "transcriptFontSize") } }
     var transcriptShowsOriginal: Bool { didSet { store(transcriptShowsOriginal, "transcriptShowsOriginal") } }
     var transcriptPinned: Bool { didSet { store(transcriptPinned, "transcriptPinned") } }
+    /// Light or dark for the transcript window, or the system's choice.
+    var windowAppearance: WindowAppearance { didSet { store(windowAppearance.rawValue, "windowAppearance") } }
     var presenterFontSize: Double { didSet { store(presenterFontSize, "presenterFontSize") } }
 
     var showsInDock: Bool { didSet { store(showsInDock, "showsInDock"); applyActivationPolicy() } }
@@ -330,6 +332,7 @@ final class AppModel {
         transcriptFontSize = d.object(forKey: "transcriptFontSize") as? Double ?? 15
         transcriptShowsOriginal = d.object(forKey: "transcriptShowsOriginal") as? Bool ?? true
         transcriptPinned = d.bool(forKey: "transcriptPinned")
+        windowAppearance = WindowAppearance(rawValue: d.string(forKey: "windowAppearance") ?? "") ?? .system
         presenterFontSize = (d.object(forKey: "presenterFontSize") as? Double ?? 40).clamped(to: Self.presenterFontRange)
         showsInDock = d.object(forKey: "showsInDock") as? Bool ?? true
         liquidGlass = d.object(forKey: "liquidGlass") == nil ? true : d.bool(forKey: "liquidGlass")
