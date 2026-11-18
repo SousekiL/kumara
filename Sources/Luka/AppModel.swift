@@ -102,6 +102,17 @@ final class AppModel {
     }
     @ObservationIgnored private var syncingChannels = false
 
+    /// Choosing a mode sets what's on: Lecture neither, Meeting the summary, Interview both.
+    /// Either can still be switched by hand afterwards.
+    func applyModeDefaults() {
+        switch summarizer.mode {
+        case .lecture: summarizer.enabled = false; answerer.enabled = false
+        case .meeting: summarizer.enabled = true; answerer.enabled = false
+        case .interview: summarizer.enabled = true; answerer.enabled = true
+        }
+        syncInterviewChannels()
+    }
+
     /// Interview answers need to know which words are mine, so they turn Me / Them on, and off again after.
     func syncInterviewChannels() {
         let wanted = summarizer.mode == .interview && answerer.enabled
@@ -311,7 +322,7 @@ final class AppModel {
                 self.handleTranslation(event, lane: lane)
             }
         }
-        summarizer.onModeChange = { [weak self] in self?.syncInterviewChannels() }
+        summarizer.onModeChange = { [weak self] in self?.applyModeDefaults() }
         answerer.onEnabledChange = { [weak self] in self?.syncInterviewChannels() }
         answerer.onAnswer = { [weak self] in
             guard let self else { return }

@@ -386,9 +386,9 @@ extension AssistantMode {
 
     var explanation: String {
         switch self {
-        case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers.")
-        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer; discussion between people doesn't.")
-        case .interview: tr("Interviews: running notes of each question and what the answer covered. Interview questions for your role get an answer in the first person; small talk, logistics and your own questions don't.")
+        case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers. Starts with the summary and answers off.")
+        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer. Starts with the summary on and answers off.")
+        case .interview: tr("Interviews: running notes of each question; interview questions for your role answered in the first person, and your own answers polished. Starts with both on, and Me / Them.")
         }
     }
 }

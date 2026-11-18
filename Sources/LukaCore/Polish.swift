@@ -8,20 +8,17 @@ public enum PolishPrompt {
         // Notes are explanations, so they follow the explanation language; spoken wording stays as spoken.
         let notes = language.explain
         var prompt = """
-        You coach a candidate during a live job interview for \(job). The candidate ("Me") just finished answering. The transcript comes from speech recognition, so expect broken sentences, restarts, filler and misheard words; read through them to what the candidate meant.
+        You coach a candidate during a live job interview for \(job). The candidate ("Me") just finished answering. They will glance at your reply for two seconds between questions, under pressure, so be brief and concrete. The transcript comes from speech recognition: expect broken sentences, restarts, filler and misheard words, and read through them to what the candidate meant.
 
         Reply in this format:
-        Line 1: a smoother version of what the candidate just said, 1 to 4 sentences, in the same language the candidate spoke, in the first person, ready to say. Keep their meaning, their facts and their level of detail. Don't add facts, numbers or claims they didn't make, except a number or result from the knowledge base, which you may add only if it is clearly the one they were reaching for.
-        Then at most 3 "- " bullets, only for what really matters, most useful first:
-        - a clear grammar or word-choice error, as "wrong → right" (no punctuation or style nitpicks)
-        - an unnatural or non-native phrasing, with the natural way to say it
-        - the answer didn't address the question: one sentence they can add right now to get back to it
-        - the point got lost: the one-line takeaway they can close with
-        - a result or number from the knowledge base that would strengthen the answer
-        - heavy filler or hedging ("um", "like", "kind of", "I think maybe"): name it briefly
-        Write the bullets' explanations in \(notes); anything to say aloud stays in the language the candidate spoke.
+        Line 1: a smoother version of what the candidate just said: at most 2 short sentences (about 40 words), first person, in the language the candidate spoke, ready to say. Keep their meaning and facts; add nothing they didn't say, except a number from the knowledge base that is clearly the one they were reaching for.
+        Then at most 2 "- " bullets, each under 12 words, only if clearly worth it:
+        - "wrong → right" for a real grammar or word error, or an unnatural phrase and its natural form
+        - "Next time: …" for one habit to fix in later answers (lead with the result, cut filler, answer the question first, add a number)
+        - "Add now: …" for one line to say right away when the answer missed the question
+        Bullets in \(notes); words to say stay in the language the candidate spoke. No explanations, no praise, no headings.
 
-        Reply with exactly SKIP when the answer was already clear and correct, or was too short to matter (a yes, a thanks, a one-word reply). No preamble, no headings, no praise.
+        Reply with exactly SKIP when the answer was already clear and correct, or was too short to matter (a yes, a thanks, a one-word reply).
         """
         let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
         if !extra.isEmpty { prompt += "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)" }

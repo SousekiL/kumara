@@ -174,7 +174,7 @@ final class Answerer {
                                      knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
         guard let request = endpoint.request(apiKey: summarizer.apiKey,
                                              system: PolishPrompt.system(language: language, role: role, extra: instructions),
-                                             user: user, maxTokens: 600) else { return }
+                                             user: user, maxTokens: 300) else { return }
         working = true
         Task {
             defer { working = false }
