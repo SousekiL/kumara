@@ -243,9 +243,9 @@ final class AppModel {
     @ObservationIgnored private var noticeTask: Task<Void, Never>?
 
     static let captionLineRange = 1...6
-    static let captionFontRange = 14.0...64.0
+    static let captionFontRange = 14.0...60.0
     static let transcriptFontRange = 11.0...28.0
-    static let presenterFontRange = 20.0...96.0
+    static let presenterFontRange = 20.0...60.0
 
     /// Luka Plus has its own bundle ID, so its settings start empty: on first launch, take over
     /// the original Luka's. The API key and sessions are files in Application Support and are shared.
@@ -290,7 +290,7 @@ final class AppModel {
         pausesWhenQuiet = d.object(forKey: "pausesWhenQuiet") == nil ? true : d.bool(forKey: "pausesWhenQuiet")
         quiet = QuietGate(sleepAfterSeconds: d.object(forKey: "quietSeconds") == nil ? 180 : d.integer(forKey: "quietSeconds"))
         captionLines = d.object(forKey: "captionLines") as? Int ?? 2
-        captionFontSize = d.object(forKey: "captionFontSize") as? Double ?? 24
+        captionFontSize = (d.object(forKey: "captionFontSize") as? Double ?? 24).clamped(to: Self.captionFontRange)
         captionOriginalFontSize = d.object(forKey: "captionOriginalFontSize") as? Double
             ?? Self.defaultOriginalSize(for: d.object(forKey: "captionFontSize") as? Double ?? 24)
         captionShowsOriginal = d.bool(forKey: "captionShowsOriginal")
@@ -306,7 +306,7 @@ final class AppModel {
         transcriptFontSize = d.object(forKey: "transcriptFontSize") as? Double ?? 15
         transcriptShowsOriginal = d.object(forKey: "transcriptShowsOriginal") as? Bool ?? true
         transcriptPinned = d.bool(forKey: "transcriptPinned")
-        presenterFontSize = d.object(forKey: "presenterFontSize") as? Double ?? 40
+        presenterFontSize = (d.object(forKey: "presenterFontSize") as? Double ?? 40).clamped(to: Self.presenterFontRange)
         showsInDock = d.object(forKey: "showsInDock") as? Bool ?? true
         liquidGlass = d.object(forKey: "liquidGlass") == nil ? true : d.bool(forKey: "liquidGlass")
         let visibility = CaptionVisibility(rawValue: d.string(forKey: "captionVisibility") ?? "") ?? .whileListening

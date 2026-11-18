@@ -231,7 +231,7 @@ private struct CaptionSettings: View {
     }
 
     /// One scale for every text size slider, so the same size sits at the same spot on each.
-    private static let sizeScale = 10.0...96.0
+    private static let sizeScale = 10.0...60.0
 
     /// A text size slider with its value. It runs along the shared scale and stops at the ends of its own range.
     private func size(_ title: String, _ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double) -> some View {
