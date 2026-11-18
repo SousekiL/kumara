@@ -42,7 +42,7 @@ struct SessionSidebar: View {
 
         /// What the list shows. The day is already the section's heading, so an untitled
         /// session goes by its time alone; a title the user gave is shown as it is.
-        var label: String {
+        @MainActor var label: String {
             title == AppModel.defaultTitle(createdAt)
                 ? createdAt.formatted(Date.FormatStyle(time: .shortened).locale(Localizer.shared.locale))
                 : title
