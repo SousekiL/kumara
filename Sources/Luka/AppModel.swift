@@ -167,6 +167,15 @@ final class AppModel {
     var dockBadge = false
     /// Font family for captions, the transcript and the summary; empty is the system font.
     var fontFamily: String { didSet { store(fontFamily, "fontFamily") } }
+    /// Font for Chinese and Japanese characters; empty lets macOS pick (PingFang SC).
+    var cjkFontFamily: String {
+        didSet {
+            store(cjkFontFamily, "cjkFontFamily")
+            LukaFont.cjkFamily = cjkFontFamily
+        }
+    }
+    /// Weight of the main caption line. Regular by default: medium Chinese reads heavy over video.
+    var captionWeight: CaptionWeight { didSet { store(captionWeight.rawValue, "captionWeight") } }
     var captionStyle: CaptionStyle { didSet { store(captionStyle.rawValue, "captionStyle") } }
     var captionPinned: Bool { didSet { store(captionPinned, "captionPinned") } }
     var transcriptFontSize: Double { didSet { store(transcriptFontSize, "transcriptFontSize") } }
@@ -245,6 +254,9 @@ final class AppModel {
         captionShowsOriginal = d.bool(forKey: "captionShowsOriginal")
         captionLanguage = d.string(forKey: "captionLanguage") ?? ""
         fontFamily = d.string(forKey: "fontFamily") ?? ""
+        cjkFontFamily = d.string(forKey: "cjkFontFamily") ?? ""
+        LukaFont.cjkFamily = d.string(forKey: "cjkFontFamily") ?? ""
+        captionWeight = CaptionWeight(rawValue: d.string(forKey: "captionWeight") ?? "") ?? .regular
         showsDockButton = d.object(forKey: "showsDockButton") as? Bool ?? true
         captionStyle = CaptionStyle(rawValue: d.string(forKey: "captionStyle") ?? "") ?? .glass
         captionPinned = d.object(forKey: "captionPinned") as? Bool ?? true

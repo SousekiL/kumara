@@ -22,7 +22,8 @@ struct LukaApp: App {
                 .environment(model)
                 .environment(\.usesGlass, model.usesGlass)
                 .environment(\.fontFamily, model.fontFamily)
-                .id(localizer.language)
+                // A new Chinese font redraws the window's text.
+                .id(localizer.language.rawValue + "|" + model.cjkFontFamily)
         }
         .defaultSize(width: 760, height: 640)
         .defaultPosition(.trailing)

@@ -225,6 +225,7 @@ private struct DockPopup: View {
 
     var body: some View {
         SummaryPanel(transcript: model.transcript)
+            .id(model.cjkFontFamily)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(.regularMaterial, in: .rect(cornerRadius: 16))
             .clipShape(.rect(cornerRadius: 16))

@@ -170,8 +170,19 @@ private struct CaptionSettings: View {
                     Divider()
                     ForEach(LukaFont.families, id: \.self) { Text($0).tag($0) }
                 }
+                Picker(tr("Chinese font"), selection: $model.cjkFontFamily) {
+                    Text(tr("System (PingFang)")).tag("")
+                    Divider()
+                    ForEach(LukaFont.cjkFamilies, id: \.self) { Text($0).tag($0) }
+                }
+                Picker(tr("Caption weight"), selection: $model.captionWeight) {
+                    Text(tr("Light")).tag(CaptionWeight.light)
+                    Text(tr("Regular")).tag(CaptionWeight.regular)
+                    Text(tr("Medium")).tag(CaptionWeight.medium)
+                }
+                .pickerStyle(.segmented)
             } footer: {
-                Text(tr("Used for captions, the transcript and the summary."))
+                Text(tr("Used for captions, the transcript and the summary. The Chinese font applies to Chinese and Japanese characters; English keeps the main font."))
             }
             Section {
                 Picker(tr("Style"), selection: $model.captionStyle) {

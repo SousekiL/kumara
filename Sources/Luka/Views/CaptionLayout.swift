@@ -29,8 +29,12 @@ struct CaptionMetrics: Equatable {
     var family: String = ""
     /// Size of the original-language line; nil follows the caption size.
     var originalSize: CGFloat? = nil
+    /// Weight of the main caption line.
+    var weight: NSFont.Weight = .medium
+    /// The Chinese font in use; part of the metrics so a change lays captions out again.
+    var cjk: String = ""
 
-    var font: NSFont { LukaFont.ns(family, size: fontSize, weight: .medium) }
+    var font: NSFont { LukaFont.ns(family, size: fontSize, weight: weight) }
     var lineHeight: CGFloat { ceil(fontSize * 1.36) }
     var originalFontSize: CGFloat { originalSize ?? AppModel.defaultOriginalSize(for: fontSize) }
     var originalFont: NSFont { LukaFont.ns(family, size: originalFontSize, weight: .regular) }

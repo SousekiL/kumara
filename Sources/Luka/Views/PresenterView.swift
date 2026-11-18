@@ -10,7 +10,7 @@ struct PresenterView: View {
         // The caption strip's layout: as many recent rows as fit, newest at the bottom,
         // speaker names in a gutter and repeated on the top row so nobody goes unnamed.
         GeometryReader { geo in
-            let metrics = CaptionMetrics(fontSize: model.presenterFontSize, family: model.fontFamily)
+            let metrics = CaptionMetrics(fontSize: model.presenterFontSize, family: model.fontFamily, weight: model.captionWeight.ns, cjk: model.cjkFontFamily)
             let transcript = model.transcript
             let names = transcript.visibleSpeakers.map { model.speakerName($0.id) }
             let gutter = names.isEmpty ? 0 : CaptionLayout.labelWidth(names, metrics: metrics, limit: geo.size.width * 0.26)

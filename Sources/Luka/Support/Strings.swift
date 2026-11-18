@@ -199,6 +199,13 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Chinese font": "中文字体",
+        "System (PingFang)": "系统（苹方）",
+        "Caption weight": "字幕字重",
+        "Light": "细",
+        "Regular": "常规",
+        "Medium": "中等",
+        "Used for captions, the transcript and the summary. The Chinese font applies to Chinese and Japanese characters; English keeps the main font.": "用于字幕、转写和总结。中文字体只作用于中日文字符，英文仍用上面的字体。",
         "Original text size": "原文字号",
         "Summary and Answers": "总结和回答",
         "Unpin Question": "取消固定问题",

@@ -9,7 +9,8 @@ struct CaptionRoot: View {
     @State private var languagesShown = false
     @Namespace private var glass
 
-    private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize, family: model.fontFamily, originalSize: model.captionOriginalFontSize) }
+    private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize, family: model.fontFamily, originalSize: model.captionOriginalFontSize,
+                                                           weight: model.captionWeight.ns, cjk: model.cjkFontFamily) }
 
     var body: some View {
         let showToolbar = (hovering || languagesShown || model.notice != nil) && !model.locked
@@ -202,7 +203,7 @@ struct CaptionRowView: View {
         let solid = Text(row.solid).foregroundStyle(row.isOriginal ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
         let faint = Text(row.faint).foregroundStyle(.tertiary)
         return Text("\(solid)\(faint)")
-            .font(LukaFont.font(metrics.family, size: size, weight: row.isOriginal ? .regular : .medium))
+            .font(LukaFont.font(metrics.family, size: size, weight: row.isOriginal ? .regular : metrics.weight))
     }
 }
 

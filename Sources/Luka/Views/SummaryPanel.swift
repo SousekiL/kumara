@@ -257,6 +257,8 @@ struct SummaryText: View {
     let markdown: String
     let fontSize: Double
     let family: String
+    /// The Chinese font, so a change redraws the text.
+    var cjk: String = LukaFont.cjkFamily
     /// The first line of the latest addition; earlier lines are dimmed. Nil shows everything alike.
     var freshFrom: Int? = nil
 
