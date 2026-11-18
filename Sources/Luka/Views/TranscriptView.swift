@@ -10,7 +10,9 @@ struct TranscriptWindow: View {
             SessionSidebar()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 270, max: 380)
         } detail: {
-            if let t = model.selectedTranscript {
+            if model.selectedIDs.count > 1 {
+                MultiSelectionView(ids: model.selectedIDs)
+            } else if let t = model.selectedTranscript {
                 SessionView(transcript: t)
                     .id(t.id)
                     .environment(\.session, t)
@@ -34,7 +36,11 @@ struct TranscriptWindow: View {
 struct SessionSidebar: View {
     @Environment(AppModel.self) private var model
     @State private var renamingID: UUID?
-    @State private var pendingDelete: UUID?
+    @State private var pendingDelete: Set<UUID> = []
+    /// Sessions whose tags are being edited.
+    @State private var tagging: TagTarget?
+    /// Only sessions with this tag are listed.
+    @State private var filterTag: String?
 
     struct Row: Identifiable {
         let id: UUID
@@ -42,6 +48,7 @@ struct SessionSidebar: View {
         let createdAt: Date
         let preview: String
         let isLive: Bool
+        var tags: [String] = []
 
         /// What the list shows. The day is already the section's heading, so an untitled
         /// session goes by its time alone; a title the user gave is shown as it is.
@@ -56,10 +63,14 @@ struct SessionSidebar: View {
         let live = model.transcript
         var rows = model.store.summaries.filter { $0.id != live.id }.map {
             Row(id: $0.id, title: $0.title.isEmpty ? AppModel.defaultTitle($0.createdAt) : $0.title,
-                createdAt: $0.createdAt, preview: $0.preview, isLive: false)
+                createdAt: $0.createdAt, preview: $0.preview, isLive: false, tags: $0.tags)
         }
         let preview = live.lines.first.map(\.primary) ?? (model.isListening ? tr("Listening…") : tr("Nothing yet"))
-        rows.append(Row(id: live.id, title: model.title(live), createdAt: live.createdAt, preview: preview, isLive: true))
+        rows.append(Row(id: live.id, title: model.title(live), createdAt: live.createdAt, preview: preview, isLive: true, tags: live.tags))
+        if let filterTag {
+            // The live session stays in the list, so it's always one click away.
+            rows = rows.filter { $0.isLive || $0.tags.contains { Tags.same($0, filterTag) } }
+        }
         return rows.sorted { $0.createdAt > $1.createdAt }
     }
 
@@ -78,28 +89,42 @@ struct SessionSidebar: View {
 
     var body: some View {
         @Bindable var model = model
-        List(selection: $model.selectedID) {
+        // ⌘- or ⇧-click selects several sessions for the batch actions.
+        List(selection: selection) {
             ForEach(sections, id: \.title) { section in
                 Section(section.title) {
                     ForEach(section.rows) { row in
-                        SessionRow(row: row, renaming: renamingID == row.id) { renamingID = nil }
+                        SessionRow(row: row, renaming: renamingID == row.id, filterTag: filterTag) { renamingID = nil }
                             .tag(row.id)
-                            .contextMenu { menu(for: row) }
                     }
                 }
             }
         }
+        .contextMenu(forSelectionType: UUID.self) { ids in
+            menu(for: ids)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            let tags = model.allTags
+            if !tags.isEmpty { TagFilterBar(tags: tags, selected: $filterTag) }
+        }
         .animation(.smooth, value: rows.map(\.id))
-        .onDeleteCommand { pendingDelete = model.selectedID }
-        .confirmationDialog(tr("Delete this session?"), isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })) {
+        .onDeleteCommand { pendingDelete = model.selectedIDs.isEmpty ? Set(model.selectedID.map { [$0] } ?? []) : model.selectedIDs }
+        .confirmationDialog(pendingDelete.count > 1 ? String(format: tr("Delete %d sessions?"), pendingDelete.count) : tr("Delete this session?"),
+                            isPresented: Binding(get: { !pendingDelete.isEmpty }, set: { if !$0 { pendingDelete = [] } })) {
             Button(tr("Delete"), role: .destructive) {
-                if let id = pendingDelete { withAnimation(.smooth) { model.deleteSession(id) } }
-                pendingDelete = nil
+                let ids = pendingDelete
+                withAnimation(.smooth) { model.deleteSessions(ids) }
+                pendingDelete = []
             }
             .keyboardShortcut(.defaultAction)
         } message: {
-            Text(tr("The transcript will be removed from this Mac."))
+            Text(pendingDelete.count > 1 ? tr("The transcripts will be removed from this Mac.") : tr("The transcript will be removed from this Mac."))
         }
+        .sheet(item: $tagging) { target in
+            TagEditor(ids: target.ids).environment(model)
+        }
+        // A tag that's no longer on any session stops filtering.
+        .onChange(of: model.allTags) { if let f = filterTag, !model.allTags.contains(where: { Tags.same($0, f) }) { filterTag = nil } }
         .toolbar {
             ToolbarItem {
                 Button { withAnimation(.smooth) { model.newSession() } } label: {
@@ -110,12 +135,28 @@ struct SessionSidebar: View {
         }
     }
 
-    @ViewBuilder private func menu(for row: Row) -> some View {
-        Button(tr("Rename…")) { renamingID = row.id }
-        Button(tr("Copy Transcript")) { if let t = transcript(row.id) { model.copy(t) } }
-        Button(tr("Export…")) { if let t = transcript(row.id) { model.exportTranscript(t) } }
-        Divider()
-        Button(tr("Delete…"), role: .destructive) { pendingDelete = row.id }
+    /// The list's selection: several sessions, or the one shown.
+    private var selection: Binding<Set<UUID>> {
+        Binding(
+            get: { model.selectedIDs.isEmpty ? Set(model.selectedID.map { [$0] } ?? []) : model.selectedIDs },
+            set: { model.selectedIDs = $0 })
+    }
+
+    /// One session gets its own actions; several get the ones that make sense for all of them at once.
+    @ViewBuilder private func menu(for ids: Set<UUID>) -> some View {
+        if ids.count == 1, let id = ids.first {
+            Button(tr("Rename…")) { renamingID = id }
+            Button(tr("Tags…")) { tagging = TagTarget(ids: ids) }
+            Button(tr("Copy Transcript")) { if let t = transcript(id) { model.copy(t) } }
+            Button(tr("Export…")) { if let t = transcript(id) { model.exportTranscript(t) } }
+            Divider()
+            Button(tr("Delete…"), role: .destructive) { pendingDelete = ids }
+        } else if ids.count > 1 {
+            Button(String(format: tr("Tag %d Sessions…"), ids.count)) { tagging = TagTarget(ids: ids) }
+            Button(String(format: tr("Copy %d Transcripts"), ids.count)) { model.copy(ids) }
+            Divider()
+            Button(String(format: tr("Delete %d Sessions…"), ids.count), role: .destructive) { pendingDelete = ids }
+        }
     }
 
     private func transcript(_ id: UUID) -> Transcript? {
@@ -123,10 +164,17 @@ struct SessionSidebar: View {
     }
 }
 
+/// The sessions a tag sheet is for.
+struct TagTarget: Identifiable {
+    let ids: Set<UUID>
+    var id: Set<UUID> { ids }
+}
+
 private struct SessionRow: View {
     @Environment(AppModel.self) private var model
     let row: SessionSidebar.Row
     let renaming: Bool
+    var filterTag: String?
     let done: () -> Void
     @State private var draft = ""
     @FocusState private var focused: Bool
@@ -157,6 +205,15 @@ private struct SessionRow: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+            if !row.tags.isEmpty {
+                // Tags wrap onto as many short lines as they need.
+                TagFlow(spacing: 4) {
+                    ForEach(row.tags, id: \.self) { tag in
+                        TagChip(tag: tag, highlighted: filterTag.map { Tags.same($0, tag) } ?? false)
+                    }
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(.vertical, 3)
         .animation(.smooth, value: model.isListening)

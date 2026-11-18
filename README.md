@@ -128,6 +128,10 @@ Pick **Lecture**, **Meeting** or **Interview** at the top of the summary column,
 
 Settings › Assistant › **This conversation** holds the role you're interviewing for and one note about this conversation, read by both the summary and the answers. Settings › **Knowledge** holds what stays the same: files, folders and your own notes.
 
+## Sessions: tags and batch actions
+
+Right-click a session › **Tags…** to tag it; tags show under each session and in a bar above the list, where choosing one lists only sessions with it. ⌘- or ⇧-click selects several sessions: right-click for **Tag**, **Copy** or **Delete** on all of them at once, or use the buttons in the window.
+
 ## Floating button
 
 While Luka listens, a small button sits on the right edge of the screen, its dots moving with the sound. Click it for the summary and answers in a floating panel over any app, full-screen ones included; a red mark means an answer arrived while it was closed. Its top half opens the panel, its bottom half shows or hides the captions. Drag it up or down; turn it off in Settings › Assistant › Output or the menu bar's Windows menu. With the Dark caption style, the panel uses the same black and opacity as the captions.

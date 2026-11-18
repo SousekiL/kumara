@@ -578,3 +578,28 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(SourceMemory.turningOff(current: "mic", both: "both", remembered: "system") == nil)
     }
 }
+
+@Suite struct TagTests {
+    @Test func normalizesTypedTags() {
+        #expect(Tags.normalize("  #面试 ") == "面试")
+        #expect(Tags.normalize("data   science") == "data science")
+        #expect(Tags.normalize(" # ") == nil)
+    }
+
+    @Test func addsAndRemovesIgnoringCase() {
+        #expect(Tags.adding("Interview", to: ["interview"]) == ["interview"])
+        #expect(Tags.adding("#Airwallex", to: ["interview"]) == ["interview", "Airwallex"])
+        #expect(Tags.removing("INTERVIEW", from: ["interview", "lecture"]) == ["lecture"])
+    }
+
+    @Test func listsTagsByUse() {
+        #expect(Tags.all(in: [["b", "a"], ["A"], ["c"]]) == ["a", "b", "c"])
+    }
+
+    @Test @MainActor func tagsSurviveSaving() {
+        let t = Transcript()
+        t.tags = ["面试", "Airwallex"]
+        #expect(Transcript(snapshot: t.snapshot).tags == ["面试", "Airwallex"])
+        #expect(Transcript().snapshot.tags == nil)
+    }
+}

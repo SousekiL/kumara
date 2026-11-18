@@ -27,7 +27,14 @@ final class AppModel {
     /// The session audio goes into. Captions always show this one.
     private(set) var transcript = Transcript()
     /// The session shown in the transcript window.
-    var selectedID: UUID?
+    var selectedID: UUID? {
+        // Showing a session that isn't among the selected ones selects it alone.
+        didSet { if let id = selectedID, !selectedIDs.contains(id) { selectedIDs = [id] } }
+    }
+    /// Every session selected in the sidebar; more than one for batch actions.
+    var selectedIDs: Set<UUID> = [] {
+        didSet { if selectedIDs.count == 1, let only = selectedIDs.first, selectedID != only { selectedID = only } }
+    }
     @ObservationIgnored private var autosave: Timer?
     @ObservationIgnored var openTranscript: () -> Void = {}
     @ObservationIgnored var closeTranscript: () -> Void = {}
@@ -626,6 +633,48 @@ final class AppModel {
 
     static func defaultTitle(_ date: Date) -> String {
         date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(Localizer.shared.locale))
+    }
+
+    // MARK: Several sessions
+
+    func session(_ id: UUID) -> Transcript? {
+        id == transcript.id ? transcript : store.transcript(id)
+    }
+
+    /// Every tag in use, most used first.
+    var allTags: [String] {
+        Tags.all(in: store.summaries.filter { $0.id != transcript.id }.map(\.tags) + [transcript.tags])
+    }
+
+    /// The tags on a session, from its summary when it isn't loaded.
+    func tags(of id: UUID) -> [String] {
+        id == transcript.id ? transcript.tags : store.summaries.first(where: { $0.id == id })?.tags ?? []
+    }
+
+    /// Adds or removes one tag on several sessions at once.
+    func setTag(_ tag: String, on: Bool, for ids: Set<UUID>) {
+        for id in ids {
+            guard let t = session(id) else { continue }
+            t.tags = on ? Tags.adding(tag, to: t.tags) : Tags.removing(tag, from: t.tags)
+            store.save(t)
+        }
+    }
+
+    func deleteSessions(_ ids: Set<UUID>) {
+        for id in ids { deleteSession(id) }
+        selectedIDs = selectedIDs.subtracting(ids)
+        if selectedIDs.isEmpty { selectedID = transcript.id }
+    }
+
+    /// Several transcripts as one text, oldest first, each under its title.
+    func copy(_ ids: Set<UUID>) {
+        let sessions = ids.compactMap(session).sorted { $0.createdAt < $1.createdAt }
+        let text = sessions.map { t in
+            "# " + title(t) + "\n\n" + t.plainText(name: { self.speakerName($0, in: t) }, includeOriginal: transcriptShowsOriginal)
+        }.joined(separator: "\n\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        show(String(format: tr("Copied %d transcripts"), sessions.count))
     }
 
     func copy(_ t: Transcript) {

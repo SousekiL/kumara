@@ -127,6 +127,8 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var summary: LiveSummary?
     /// Answers to questions heard; absent in sessions saved before answers existed.
     public var answers: [QuestionAnswer]?
+    /// The user's tags; absent in sessions saved before tags existed, or with none.
+    public var tags: [String]? = nil
 }
 
 @MainActor
@@ -152,6 +154,8 @@ public final class Transcript: Identifiable {
     public var summary: LiveSummary? { didSet { if summary != oldValue { touch() } } }
     /// Answers to questions heard while listening, oldest first.
     public var answers: [QuestionAnswer] = [] { didSet { if answers != oldValue { touch() } } }
+    /// The user's tags, for finding sessions again.
+    public var tags: [String] = [] { didSet { if tags != oldValue { touch() } } }
 
     /// The line still growing, per channel; "" is the single stream of the normal modes.
     @ObservationIgnored private var openLines: [String: Int] = [:]
@@ -208,6 +212,7 @@ public final class Transcript: Identifiable {
         nextColor = s.nextColor
         summary = s.summary
         answers = s.answers ?? []
+        tags = s.tags ?? []
         // Continue numbering Them streams past the saved ones, so new people aren't taken for earlier ones.
         themEpoch = max(themEpoch, speakers.keys.filter { $0.label.hasPrefix(Channel.themPrefix) }.map(\.epoch).max() ?? 0)
     }
@@ -216,7 +221,8 @@ public final class Transcript: Identifiable {
         TranscriptSnapshot(id: id, title: title, createdAt: createdAt, updatedAt: updatedAt, lines: lines,
                            speakers: speakerOrder.compactMap { speakers[$0] }, speakerOrder: speakerOrder,
                            epoch: epoch, nextLineID: nextLineID, nextOrdinal: nextOrdinal, nextColor: nextColor,
-                           summary: summary, answers: answers.isEmpty ? nil : answers)
+                           summary: summary, answers: answers.isEmpty ? nil : answers,
+                           tags: tags.isEmpty ? nil : tags)
     }
 
     /// Stamps the session with the time listening first starts.
