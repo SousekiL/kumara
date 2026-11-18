@@ -123,7 +123,7 @@ final class Summarizer {
         let system = SummaryPrompt.system(language: language, detail: detail, mode: mode, extra: instructions)
         // An overview comes back whole each time, so it replaces what was there.
         let whole = rewrite || mode.rewritesSummary
-        guard let request = endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: rewrite ? 6_000 : whole ? 2_500 : 1_000) else {
+        guard let request = endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: rewrite ? 10_000 : whole ? 6_000 : 4_000) else {
             lastError = tr("The summary model’s address isn’t valid.")
             return
         }
@@ -168,7 +168,7 @@ final class Summarizer {
             testResult = tr("Fill in the model and API key first.")
             return
         }
-        guard let request = endpoint.request(apiKey: apiKey, system: "Reply with the single word OK.", user: "ping", maxTokens: 20) else {
+        guard let request = endpoint.request(apiKey: apiKey, system: "Reply with the single word OK.", user: "ping", maxTokens: 2_000) else {
             testResult = tr("The summary model’s address isn’t valid.")
             return
         }

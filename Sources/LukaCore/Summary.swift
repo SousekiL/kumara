@@ -111,8 +111,6 @@ public struct SummaryEndpoint: Sendable, Equatable {
                 "max_tokens": maxTokens,
                 "system": system,
                 "messages": [["role": "user", "content": user]],
-                // Short live replies: thinking first only adds delay and can use up the whole budget.
-                "thinking": ["type": "disabled"],
             ]
         }
         r.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])

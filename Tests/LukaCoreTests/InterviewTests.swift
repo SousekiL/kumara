@@ -472,7 +472,7 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         }
         let r = try #require(claude.request(apiKey: "k", system: "s", user: "u"))
         let body = try #require(JSONSerialization.jsonObject(with: r.httpBody!) as? [String: Any])
-        #expect((body["thinking"] as? [String: String])?["type"] == "disabled")
+        #expect(body["thinking"] == nil)
     }
 }
 
