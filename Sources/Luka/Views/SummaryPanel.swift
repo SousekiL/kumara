@@ -208,16 +208,15 @@ struct SummaryPanel: View {
         if !rows.isEmpty {
             // Newest first and at full strength; earlier ones step back.
             let newest = rows.first?.id
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 12) {
                 ForEach(rows) { row in
-                    VStack(alignment: .leading, spacing: 18) {
-                        AnswerCard(row: row, fontSize: model.assistant.fontSize, family: model.fontFamily,
-                                   askerColor: row.polish ? .secondary : model.speakerColor(asker(of: row.id), in: transcript)) {
-                            copy(row.answer, notice: tr("Copied answer"))
-                        }
-                        .opacity(row.id == newest ? 1 : 0.7)
-                        if row.id != rows.last?.id { Divider().opacity(0.6) }
+                    AnswerCard(row: row, fontSize: model.assistant.fontSize, family: model.fontFamily,
+                               askerColor: row.polish ? .secondary : model.speakerColor(asker(of: row.id), in: transcript)) {
+                        copy(row.answer, notice: tr("Copied answer"))
                     }
+                    // The newest card carries the accent edge; earlier ones are quieter cards.
+                    .lukaCard(active: row.id == newest)
+                    .opacity(row.id == newest ? 1 : 0.78)
                     // A new card slides in from the top; one being written becomes the finished card in place.
                     .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))
                 }
@@ -497,7 +496,7 @@ struct AnswerText: View {
                let close = chars[(i + 1)...].firstIndex(of: pair.close) {
                 let lower = text.characters.index(text.startIndex, offsetBy: i)
                 let upper = text.characters.index(text.startIndex, offsetBy: close + 1)
-                text[lower..<upper].foregroundColor = Color.accentColor
+                text[lower..<upper].foregroundColor = LukaTheme.quote
                 i = close + 1
             } else {
                 i += 1
@@ -568,13 +567,13 @@ private struct PanelTab: View {
                     .fontWeight(.semibold).opacity(0)
                     .overlay { Text(title).fontWeight(selected ? .semibold : .regular) }
                 // Always there, so the label never changes width.
-                Circle().fill(Color.accentColor).frame(width: 5, height: 5).opacity(badge && !selected ? 1 : 0)
+                Circle().fill(LukaTheme.accent).frame(width: 5, height: 5).opacity(badge && !selected ? 1 : 0)
             }
             .font(.system(size: 13))
             .foregroundStyle(selected ? .primary : .secondary)
             .padding(.vertical, 6)
             .overlay(alignment: .bottom) {
-                Capsule().fill(Color.accentColor).frame(height: 2).padding(.trailing, 9).opacity(selected ? 1 : 0).offset(y: 3)
+                Capsule().fill(LukaTheme.gradient).frame(height: 2).padding(.trailing, 9).opacity(selected ? 1 : 0).offset(y: 3)
             }
             .contentShape(.rect)
         }
@@ -599,12 +598,14 @@ private struct ModeChip: View {
             HStack(spacing: 5) {
                 Image(systemName: model.assistantMode.symbol)
                 Text(model.assistantMode.title)
-                Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).opacity(0.7)
             }
             .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(LukaTheme.accent)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
-            .background(.primary.opacity(0.08), in: .capsule)
+            .background(LukaTheme.accent.opacity(0.12), in: .capsule)
+            .overlay { Capsule().strokeBorder(LukaTheme.accent.opacity(0.28), lineWidth: 0.5) }
             .contentShape(.capsule)
         }
         .menuStyle(.button)

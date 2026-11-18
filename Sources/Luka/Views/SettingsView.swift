@@ -13,6 +13,7 @@ struct SettingsView: View {
             Tab(tr("Shortcuts"), systemImage: "command") { ShortcutSettings() }
         }
         .frame(width: 520)
+        .tint(LukaTheme.accent)
     }
 }
 

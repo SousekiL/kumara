@@ -19,6 +19,7 @@ struct TranscriptWindow: View {
             }
         }
         .frame(minWidth: 560, minHeight: 360)
+        .tint(LukaTheme.accent)
         .background(WindowConfigurator(pinned: model.transcriptPinned))
         .onAppear { model.transcriptVisible = true }
         .onDisappear { model.transcriptVisible = false }
@@ -368,21 +369,16 @@ struct SessionView: View {
                 Button(tr("Export Transcript…")) { model.exportTranscript(transcript) }
                     .disabled(transcript.lines.isEmpty)
                 Divider()
-                // Settings live here and under ⌘, so the toolbar keeps to what's used during a session.
-                Button(tr("Settings…")) { model.openSettings() }
-                Divider()
                 Button(tr("Delete Session…"), role: .destructive) { confirmingDelete = true }
                     .disabled(transcript.lines.isEmpty && isLive)
             } label: {
                 Label(tr("More"), systemImage: "ellipsis")
             }
             .menuIndicator(.hidden)
-        }
-        if #available(macOS 26, *) {
-            ToolbarSpacer(.fixed, placement: .primaryAction)
-        }
-        // The assistant column's switch stands apart at the end, above the column it opens.
-        ToolbarItemGroup(placement: .primaryAction) {
+            Button { model.openSettings() } label: {
+                Label(tr("Settings…"), systemImage: "gearshape")
+            }
+            .help(tr("Settings…") + "  ⌘,")
             Toggle(isOn: Binding(get: { model.summarizer.panelShown }, set: { model.summarizer.panelShown = $0 }).animation(.smooth)) {
                 Label(tr("Assistant"), systemImage: "sidebar.trailing")
             }
@@ -483,7 +479,7 @@ struct LineView: View {
 
     var body: some View {
         let live = provisional?.text ?? ""
-        // The translation leads; the original sits under it, smaller and quieter, close enough to read as one pair.
+        // The original sits close under its translation, so the two read as one pair.
         VStack(alignment: .leading, spacing: size * 0.25) {
             if line.expectsTranslation {
                 let pending = [line.pendingOriginal, live].filter { !$0.isEmpty }.joined(separator: " ")
@@ -496,7 +492,6 @@ struct LineView: View {
                     Text("\(Text(line.original))\(Text(live.isEmpty ? "" : (line.original.isEmpty ? live : " " + live)).foregroundStyle(.tertiary))")
                         .font(LukaFont.font(family, size: Self.originalSize(size)))
                         .foregroundStyle(.secondary)
-                        .lineSpacing(Self.originalSize(size) * 0.22)
                 } else if !pending.isEmpty {
                     Text(pending)
                         .font(LukaFont.font(family, size: size))
@@ -512,8 +507,8 @@ struct LineView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// The original under a translation: about four-fifths the size, so the two never compete.
-    static func originalSize(_ size: Double) -> Double { max(11, (size * 0.82).rounded()) }
+    /// The original under a translation, as it always was: a little smaller than the translation.
+    static func originalSize(_ size: Double) -> Double { max(10, size - 2) }
 }
 
 private struct EditableLine: View {
@@ -669,7 +664,7 @@ struct ControlBar: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-                .lukaGlass(.regular.tint(model.isListening ? .red : .accentColor).interactive(), in: .capsule)
+                .lukaGlass(.regular.tint(model.isListening ? .red : LukaTheme.accent).interactive(), in: .capsule)
                 .lukaGlassID("listen", in: glass)
                 .keyboardShortcut("r", modifiers: .command)
 
@@ -731,7 +726,7 @@ private struct ArchivedBar: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white)
-                .lukaGlass(.regular.tint(.accentColor).interactive(), in: .capsule)
+                .lukaGlass(.regular.tint(LukaTheme.accent).interactive(), in: .capsule)
                 Button { withAnimation(.smooth) { model.newSession() } } label: {
                     Label(tr("New Session"), systemImage: "plus")
                         .font(.system(size: 13, weight: .medium))

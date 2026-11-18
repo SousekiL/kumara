@@ -188,7 +188,7 @@ private struct DockButton: View {
             // Top half: the summary and answers.
             Image(systemName: model.dockOpen ? "chevron.right" : "sparkles")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(LinearGradient(colors: [.white, LukaTheme.cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 28, height: 36)
                 .background(.white.opacity(hovered == .top ? 0.14 : 0))
@@ -197,7 +197,7 @@ private struct DockButton: View {
             // Bottom half: the caption strip. Three dots that move with the sound; hollow when captions are hidden.
             HStack(alignment: .center, spacing: 3) {
                 ForEach(0..<3, id: \.self) { i in
-                    let color = live ? Color.green : Color.white.opacity(0.45)
+                    let color = live ? LukaTheme.cyan : Color.white.opacity(0.45)
                     Capsule()
                         .fill(captions ? color : .clear)
                         .overlay { Capsule().strokeBorder(color, lineWidth: captions ? 0 : 1) }
@@ -215,8 +215,10 @@ private struct DockButton: View {
         // Dark on any background, like the system's own floating controls.
         .background(.black.opacity(hovered != nil || model.dockOpen ? 0.72 : 0.55), in: .capsule)
         .background(.ultraThinMaterial, in: .capsule)
-        .overlay { Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.5) }
-        .shadow(color: .black.opacity(0.25), radius: 4, y: 1)
+        .lukaFloatingEdge(Capsule())
+        .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+        // A faint glow while listening, so it reads as on from the corner of the eye.
+        .shadow(color: LukaTheme.cyan.opacity(live ? 0.35 : 0), radius: 8)
         .overlay(alignment: .topTrailing) {
             if model.dockBadge {
                 Circle().fill(.red).frame(width: 7, height: 7).offset(x: 1, y: -1)
@@ -260,9 +262,13 @@ private struct DockPopup: View {
             }
             .clipShape(.rect(cornerRadius: 16))
             .overlay {
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(dark ? AnyShapeStyle(.white.opacity(0.08)) : AnyShapeStyle(.separator))
+                if dark {
+                    RoundedRectangle(cornerRadius: 16).strokeBorder(LukaTheme.floatingEdge, lineWidth: 0.75)
+                } else {
+                    RoundedRectangle(cornerRadius: 16).strokeBorder(.separator)
+                }
             }
+            .tint(LukaTheme.accent)
             .environment(\.colorScheme, dark ? .dark : colorScheme)
             .environment(\.fontFamily, model.fontFamily)
             .environment(\.usesGlass, model.usesGlass)

@@ -308,7 +308,7 @@ struct CaptionToolbar: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.white)
-            .lukaGlass(.regular.tint(model.isListening ? .red : .accentColor).interactive(), in: .capsule)
+            .lukaGlass(.regular.tint(model.isListening ? .red : LukaTheme.accent).interactive(), in: .capsule)
             .lukaGlassID("play", in: namespace)
             .help(model.isListening ? tr("Pause") : tr("Start Listening"))
 
@@ -537,7 +537,7 @@ struct CaptionBackground: ViewModifier {
             content
                 .background(Color.black.opacity(model.captionBackgroundOpacity), in: .rect(cornerRadius: cornerRadius))
                 // The same faint edge as the floating card, so the two read as one set.
-                .overlay { RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(0.08)) }
+                .lukaFloatingEdge(RoundedRectangle(cornerRadius: cornerRadius))
         } else {
             content
                 .lukaGlass(model.captionStyle.glass, in: .rect(cornerRadius: cornerRadius))

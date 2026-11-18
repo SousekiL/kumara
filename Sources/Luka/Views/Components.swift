@@ -187,7 +187,7 @@ struct LanguagePicker: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.45))
                 if selected {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.accentColor.gradient)
+                        .fill(LukaTheme.gradient)
                         .matchedGeometryEffect(id: "mode", in: modeSelection)
                 }
             }
@@ -298,7 +298,7 @@ struct SourceSwitch: View {
                         .frame(width: height * 1.1, height: height - 8)
                         .background {
                             if selected {
-                                Capsule().fill(Color.accentColor)
+                                Capsule().fill(LukaTheme.gradient)
                                     .matchedGeometryEffect(id: "selection", in: selection)
                             }
                         }
