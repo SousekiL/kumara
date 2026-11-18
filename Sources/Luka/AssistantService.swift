@@ -97,10 +97,28 @@ final class AssistantService {
         return !e.model.isEmpty && (!askAPIKey.trimmingCharacters(in: .whitespaces).isEmpty || local) && e.url != nil
     }
 
-    func askRequest(system: String, user: String) -> URLRequest? {
+    /// The thinking style each model turned out to accept, so later questions skip the ones it rejects.
+    private var acceptedThinking: [String: SummaryEndpoint.Thinking] = [:]
+
+    /// The thinking styles to try for the next question, best first.
+    var askThinkingOrder: [SummaryEndpoint.Thinking] {
+        guard askThinks else { return [.none] }
+        let e = askEndpoint
+        let all = e.thinkingFallbacks
+        guard let known = acceptedThinking[Self.key(e)], let i = all.firstIndex(of: known) else { return all }
+        return Array(all[i...])
+    }
+
+    func noteAccepted(_ thinking: SummaryEndpoint.Thinking) {
+        acceptedThinking[Self.key(askEndpoint)] = thinking
+    }
+
+    private static func key(_ e: SummaryEndpoint) -> String { "\(e.provider.rawValue)|\(e.baseURL)|\(e.model)" }
+
+    func askRequest(system: String, user: String, thinking: SummaryEndpoint.Thinking) -> URLRequest? {
         askUsesOwnModel
-            ? askEndpoint.request(apiKey: askAPIKey, system: system, user: user, maxTokens: 6_000, stream: true, thinks: askThinks)
-            : endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: 6_000, stream: true, thinks: askThinks)
+            ? askEndpoint.request(apiKey: askAPIKey, system: system, user: user, maxTokens: 6_000, stream: true, thinking: thinking)
+            : endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: 6_000, stream: true, thinking: thinking)
     }
 
     // MARK: Sending

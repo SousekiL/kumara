@@ -78,11 +78,30 @@ public struct SummaryEndpoint: Sendable, Equatable {
         }
     }
 
+    /// How hard the model reasons before answering.
+    public enum Thinking: Sendable, Equatable {
+        case none
+        /// Newer Claude models: adaptive thinking at high effort. OpenAI-compatible: highest reasoning effort.
+        case adaptive
+        /// Older Claude models: extended thinking with a fixed token budget.
+        case budget
+    }
+
+    /// The styles to try, best first: each model accepts only some, and says so when it doesn't.
+    public var thinkingFallbacks: [Thinking] {
+        provider == .anthropic ? [.adaptive, .budget, .none] : [.adaptive, .none]
+    }
+
+    /// Whether an error from the service is about the thinking settings, so the next style is worth trying.
+    public static func rejectsThinking(_ message: String) -> Bool {
+        let m = message.lowercased()
+        return ["thinking", "output_config", "effort", "reasoning", "adaptive"].contains { m.contains($0) }
+    }
+
     /// `stream` asks for server-sent events, read with `streamChunk(_:)`.
-    /// `thinks` asks for the model's deepest reasoning, for questions worth waiting on: extended thinking on Claude,
-    /// the highest reasoning effort on OpenAI-compatible services that support it.
+    /// `thinking` asks for the model's deeper reasoning, for questions worth waiting on.
     public func request(apiKey: String, system: String, user: String, maxTokens: Int = 1_500, stream: Bool = false,
-                        thinks: Bool = false) -> URLRequest? {
+                        thinking: Thinking = .none) -> URLRequest? {
         guard let url else { return nil }
         var r = URLRequest(url: url)
         r.httpMethod = "POST"
@@ -108,21 +127,25 @@ public struct SummaryEndpoint: Sendable, Equatable {
                 "messages": [["role": "user", "content": user]],
             ]
         }
-        if thinks {
-            switch provider {
-            case .openAI:
-                body["reasoning_effort"] = "high"
-            case .anthropic:
-                // The thinking budget has to leave room for the answer under max_tokens.
-                body["max_tokens"] = max(maxTokens, 16_000)
-                body["thinking"] = ["type": "enabled", "budget_tokens": 10_000]
-            }
+        switch (provider, thinking) {
+        case (_, .none):
+            break
+        case (.openAI, _):
+            body["reasoning_effort"] = "high"
+        case (.anthropic, .adaptive):
+            // Thinking shares max_tokens with the answer.
+            body["max_tokens"] = max(maxTokens, 16_000)
+            body["thinking"] = ["type": "adaptive"]
+            body["output_config"] = ["effort": "high"]
+        case (.anthropic, .budget):
+            body["max_tokens"] = max(maxTokens, 16_000)
+            body["thinking"] = ["type": "enabled", "budget_tokens": 10_000]
         }
         if stream {
             body["stream"] = true
             r.setValue("text/event-stream", forHTTPHeaderField: "Accept")
             // Thinking first can take a while before any text arrives.
-            r.timeoutInterval = thinks ? 300 : 120
+            r.timeoutInterval = thinking == .none ? 120 : 300
         }
         r.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         return r

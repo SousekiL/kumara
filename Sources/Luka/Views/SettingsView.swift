@@ -453,7 +453,7 @@ private struct SummarySettings: View {
             } header: {
                 Text(tr("Questions you ask"))
             } footer: {
-                Text(tr("Type a question at the bottom of the summary column, in the transcript window or the floating card; the answer shows under Answers and draws on this session’s transcript, its notes and your knowledge base. Off: the same model as above. Think deeply turns on extended thinking for Claude and the highest reasoning effort for OpenAI-compatible models; answers take longer. Turn it off if the service rejects it."))
+                Text(tr("Type a question at the bottom of the summary column, in the transcript window or the floating card; the answer shows under Answers and draws on this session’s transcript, its notes and your knowledge base. Off: the same model as above. Think deeply turns on extended thinking for Claude and the highest reasoning effort for OpenAI-compatible models; answers take longer. If a model doesn’t accept a setting, it steps down to one it does."))
             }
 
             // The mode sets the scene; every switch it sets stays here to change by hand.
