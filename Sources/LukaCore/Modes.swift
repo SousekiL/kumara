@@ -29,9 +29,6 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// Whether the summary is one overview rewritten whole. No mode does any more: a lecture's notes grow
-    /// section by section like the others, so nothing already read moves.
-    public var rewritesSummary: Bool { false }
 
     /// Lectures get no answers: their questions are the speaker's own, or put to the room.
     /// Meetings only get help with a factual question; interviews with every interview question.

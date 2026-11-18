@@ -28,15 +28,6 @@ public struct LiveSummary: Codable, Sendable, Equatable {
 public enum SummaryDetail: String, Codable, CaseIterable, Sendable {
     case concise, standard, detailed
 
-    /// For an overview: main points, bullets in all, and words per bullet.
-    var overviewLimits: (points: Int, total: Int, words: Int) {
-        switch self {
-        case .concise: (5, 8, 20)
-        case .standard: (8, 13, 26)
-        case .detailed: (12, 20, 32)
-        }
-    }
-
     /// Bullets per update, and words per bullet.
     var limits: (bullets: String, words: Int) {
         switch self {
@@ -252,11 +243,10 @@ public enum SummaryPrompt {
     }
 
     public static func system(language: OutputLanguage, detail: SummaryDetail = .concise, mode: AssistantMode = .meeting, extra: String = "") -> String {
-        if mode.rewritesSummary { return overviewSystem(language: language, detail: detail, mode: mode, extra: extra) }
         let limits = detail.limits
         // Meetings tag bullets in their own way (see the mode's guidance).
         let labelRule = mode == .meeting ? "" : "- Start a bullet with a bold label when it is one of these, translated into the notes' language: \"**Decision:**\" for something agreed, \"**Action:**\" for a task (with its owner when named), \"**Question:**\" for a question left open."
-        var prompt = """
+        let prompt = """
         You keep running notes of a conversation that is being transcribed live (a meeting, an interview, a call, a lecture, a podcast or a video). The reader follows the notes as they grow and reads only the newest lines to keep up, so what is already written stays exactly as it is. \(language.summaryRule)
 
         Each time you get the last lines of the notes so far and the new part of the transcript. Reply with only the lines to add at the end. Never repeat, rephrase or rewrite what the notes already say.
@@ -292,49 +282,6 @@ public enum SummaryPrompt {
         return extra.isEmpty ? "" : "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)"
     }
 
-    /// The other way to keep a summary: one structured overview, rewritten whole as the talk goes on.
-    static func overviewSystem(language: OutputLanguage, detail: SummaryDetail, mode: AssistantMode, extra: String) -> String {
-        let limits = detail.overviewLimits
-        return """
-        You maintain a structured summary of a talk that is being transcribed live. The reader glances at it to see where the talk stands as a whole. \(language.summaryRule)
-
-        Each time you get the current summary and the new part of the transcript. Reply with the complete updated summary: rewrite and merge, so it always covers the whole talk within the limits below.
-
-        Format
-        Line 1: "CONTEXT: …", one sentence on what this is, what it is about and, if evident, who is speaking. Infer only from clear evidence and mark what you inferred with a word like "likely"; never invent names or titles.
-        Then Markdown with "## " headings and "- " bullets, using these sections, each only when it has content:
-        ## Main points: at most \(limits.points) bullets, in the order of the argument
-        ## Key terms: terms the speaker introduced, each with a few words of definition
-        ## Takeaways: conclusions, recommendations, or what to do next
-        At most \(limits.total) bullets in total. Each bullet is one sentence of at most \(limits.words) words (about \(limits.words * 2) characters in Chinese, Japanese or Korean).
-
-        Rules
-        - A bullet states a point; it doesn't narrate. Leave out greetings, banter, filler and repetition.
-        - Keep names, numbers, dates and technical terms exactly as said. The transcript comes from speech recognition: correct a misheard name or term only when the context makes the right reading clear.
-        - Only what was said. No advice, no opinions, no outside facts.
-        - Reply with the summary only, no preamble.
-
-        \(mode.summaryGuidance)
-        """ + own(extra)
-    }
-
-    /// One update of the overview: the whole current summary and what was said since.
-    public static func overview(current: LiveSummary?, newTranscript: String) -> String {
-        var out = ""
-        if let current, !current.text.isEmpty {
-            out += "Current summary:\n<summary>\n"
-            if let context = current.context { out += "CONTEXT: \(context)\n" }
-            out += "\(current.text)\n</summary>\n\n"
-        }
-        out += "New transcript:\n<transcript>\n\(newTranscript)\n</transcript>\n\nReply with the complete updated summary."
-        return out
-    }
-
-    /// An overview changes less often than notes: every few paragraphs, or a minute with something new.
-    public static func shouldUpdateOverview(newWeight: Int, sinceUpdate: TimeInterval) -> Bool {
-        newWeight >= 900 || (newWeight >= 150 && sinceUpdate >= 60)
-    }
-
     /// One update: the end of the notes and what was said since.
     public static func append(current: LiveSummary?, newTranscript: String) -> String {
         var out = "Context so far: \(current?.context ?? "not established yet")\n\n"
@@ -358,11 +305,6 @@ public enum SummaryPrompt {
 
         Write the notes for all of it, in order, under topic headings, starting with the CONTEXT line. Cover every part of the conversation at the usual density; the per-update bullet count doesn't apply here.
         """
-    }
-
-    /// The same for an overview: one summary of everything said so far.
-    public static func rewriteOverview(transcript: String) -> String {
-        "Transcript of the talk so far:\n<transcript>\n\(transcript)\n</transcript>\n\nReply with the complete summary."
     }
 
     /// The notes' last heading and the lines after it, cut to the last `tailLimit` characters at a line break.

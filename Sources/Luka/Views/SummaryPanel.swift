@@ -16,7 +16,6 @@ struct SummaryPanel: View {
     var body: some View {
         @Bindable var answerer = model.answerer
         @Bindable var summarizer = model.summarizer
-        let mode = model.assistantMode
         let unseen = max(0, transcript.answers.count - seenAnswers)
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
@@ -71,8 +70,8 @@ struct SummaryPanel: View {
                         .padding(.horizontal, Self.inset)
                         .padding(.vertical, 16)
                 }
-                // Opening a session shows where the notes end; an overview reads from the top.
-                .defaultScrollAnchor(mode.rewritesSummary ? .top : .bottom, for: .initialOffset)
+                // Opening a session shows where the notes end.
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
                 // Notes grow at the bottom: follow them, like the transcript, unless the reader has scrolled up.
                 .scrollPosition($notesPosition)
                 .onScrollGeometryChange(for: Bool.self) { geo in
@@ -81,8 +80,7 @@ struct SummaryPanel: View {
                     followingNotes = atBottom
                 }
                 .onChange(of: transcript.summary?.text) {
-                    // An overview is rewritten whole, so there is no bottom to follow.
-                    guard followingNotes, !mode.rewritesSummary else { return }
+                    guard followingNotes else { return }
                     notesPosition.scrollTo(edge: .bottom)
                 }
             }
@@ -940,7 +938,7 @@ extension AssistantMode {
 
     var explanation: String {
         switch self {
-        case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers. Turns the summary, answers and Me / Them off; turn the summary on for an overview.")
+        case .lecture: tr("Talks, lectures, podcasts and videos: notes in numbered sections that stay put once the talk moves on, with the key terms gathered above. No answers. Turns the summary, answers and Me / Them off; turn the summary on to take notes.")
         case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer. Turns on the summary and Me / Them, with each other person numbered; answers off.")
         case .interview: tr("Interviews: interview questions for your role answered in the first person, and your own answers polished; running notes of each question if you turn the summary on. Turns on answers, Me / Them, the pinned question and polishing; the summary off.")
         }

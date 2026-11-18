@@ -541,7 +541,7 @@ enum Strings {
         "Stays the same from one conversation to the next. For what is only about this one, use Assistant › This conversation.": "长期不变的内容写在这里。只和这一场有关的，写在“助手 › 本次说明”。",
         "Summary and answers": "总结和回答",
         "Summary detail": "总结详细程度",
-        "Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers. Turns the summary, answers and Me / Them off; turn the summary on for an overview.": "讲座、演讲、播客和视频：一份结构化总结，随讲随改写。不回答问题。会关闭总结、回答和我 / 对方；需要概览时手动打开总结。",
+        "Talks, lectures, podcasts and videos: notes in numbered sections that stay put once the talk moves on, with the key terms gathered above. No answers. Turns the summary, answers and Me / Them off; turn the summary on to take notes.": "讲座、演讲、播客和视频：按编号分节记笔记，讲过去的小节不再变动，术语汇总在上方。不回答问题。会关闭总结、回答和我 / 对方；需要笔记时手动打开总结。",
         "The Dark style and its opacity also apply to the floating summary and answers card.": "深色样式和透明度也会用于浮动的总结和回答面板。",
         "Thinking…": "思考中…",
         "This conversation": "本次对话",

@@ -364,7 +364,6 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
     }
 
     @Test func lectureNotesGrowBySectionWithTerms() {
-        #expect(!AssistantMode.lecture.rewritesSummary && !AssistantMode.meeting.rewritesSummary)
         let lecture = SummaryPrompt.system(language: "English", detail: .standard, mode: .lecture, extra: "x")
         #expect(lecture.contains("Reply with only the lines to add") && lecture.contains("[Term]") && lecture.contains("## 1.") && lecture.hasSuffix("x"))
         #expect(lecture.contains("**Decision:**"))
@@ -377,9 +376,6 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.system(language: "English", mode: .interview, role: "Data Scientist").contains("a Data Scientist position"))
         #expect(AnswerPrompt.system(language: "English", mode: .meeting).contains("When in doubt, SKIP"))
         #expect(AssistantMode.lecture.eagerness == .off && AssistantMode.meeting.eagerness == .conservative)
-        let p = SummaryPrompt.overview(current: LiveSummary(text: "## Main points\n- a", updatedAt: .now, coveredLineID: 0, context: "A talk."), newTranscript: "S: more")
-        #expect(p.contains("CONTEXT: A talk.\n## Main points\n- a"))
-        #expect(SummaryPrompt.shouldUpdateOverview(newWeight: 1000, sinceUpdate: 1) && !SummaryPrompt.shouldUpdateOverview(newWeight: 300, sinceUpdate: 20))
     }
 }
 
@@ -677,5 +673,18 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(terms[0] == KeyTerm(term: "CUPED", gloss: "实验前协变量调整", definition: "uses a pre-period metric as a control variate"))
         #expect(terms[1].definition == nil)
         #expect(KeyTerm.isTermLine("- [Term] x — y") && !KeyTerm.isTermLine("- plain"))
+    }
+}
+
+@Suite struct RecentTextTests {
+    @Test @MainActor func takesTheLastMinutes() {
+        let t = Transcript()
+        t.ingest(tokens([("Earlier topic.", true, nil), ("<end>", true, nil)]))
+        t.ingest(tokens([("Latest point.", true, nil), ("<end>", true, nil)]))
+        let name: (SpeakerID) -> String = { _ in "S" }
+        // Both lines are recent.
+        #expect(t.recentText(minutes: 5, name: name).contains("Earlier topic."))
+        // Nothing in the window: falls back to the last stretch.
+        #expect(t.recentText(minutes: 5, now: .now.addingTimeInterval(3600), name: name).contains("Latest point."))
     }
 }

@@ -85,3 +85,16 @@ public enum CatchUpPrompt {
         "The recent conversation:\n<conversation>\n\(conversation)\n</conversation>"
     }
 }
+
+extension Transcript {
+    /// What was said in the last `minutes` (by when each line started), or the last stretch of talk
+    /// when nothing was said in that time. Capped so a fast meeting stays one request.
+    public func recentText(minutes: Double, now: Date = .now, limit: Int = 8_000, name: (SpeakerID) -> String) -> String {
+        let cutoff = now.addingTimeInterval(-minutes * 60)
+        guard let first = lines.firstIndex(where: { $0.startedAt >= cutoff }) else {
+            return summaryText(after: nil, closedOnly: false, limit: 3_000, name: name).text
+        }
+        let after = first > 0 ? lines[first - 1].id : nil
+        return summaryText(after: after, closedOnly: false, limit: limit, name: name).text
+    }
+}

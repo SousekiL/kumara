@@ -1,8 +1,8 @@
 import Foundation
 import LukaCore
 
-/// Keeps the live session's summary up to date with the assistant's model, one request at a time: running notes appended as talk comes in
-/// (Meeting, Interview), or an overview rewritten as the talk goes on (Lecture).
+/// Keeps the live session's summary up to date with the assistant's model, one request at a time:
+/// running notes appended as talk comes in, shaped by the mode.
 @MainActor
 @Observable
 final class Summarizer {
@@ -47,9 +47,7 @@ final class Summarizer {
         let speaking = t.lines.last?.isOpen == true || t.provisional != nil
         let weight = SummaryPrompt.weight(new.text)
         let since = now.timeIntervalSince(lastAttempt)
-        guard mode.rewritesSummary
-            ? SummaryPrompt.shouldUpdateOverview(newWeight: weight, sinceUpdate: since)
-            : SummaryPrompt.shouldUpdate(newWeight: weight, sinceUpdate: since, sinceLastSpeech: speaking ? 0 : 10) else { return }
+        guard SummaryPrompt.shouldUpdate(newWeight: weight, sinceUpdate: since, sinceLastSpeech: speaking ? 0 : 10) else { return }
         run(t, mode: mode, rewrite: false, closedOnly: true, language: language, name: name)
     }
 
@@ -76,26 +74,23 @@ final class Summarizer {
                 rewrite = false
             } else {
                 guard !all.text.isEmpty else { return }
-                user = mode.rewritesSummary ? SummaryPrompt.rewriteOverview(transcript: all.text) : SummaryPrompt.rewrite(transcript: all.text)
+                user = SummaryPrompt.rewrite(transcript: all.text)
                 lastID = all.lastLineID
             }
         }
         if !rewrite {
             let new = t.summaryText(after: t.summary?.coveredLineID, closedOnly: closedOnly, limit: SummaryPrompt.incrementalLimit, name: name)
             guard !new.text.isEmpty else { return }
-            user = mode.rewritesSummary
-                ? SummaryPrompt.overview(current: t.summary, newTranscript: new.text)
-                : SummaryPrompt.append(current: t.summary, newTranscript: new.text)
+            user = SummaryPrompt.append(current: t.summary, newTranscript: new.text)
             lastID = new.lastLineID
         }
         let system = SummaryPrompt.system(language: language, detail: detail, mode: mode, extra: service.context)
-        // An overview comes back whole each time, so it replaces what was there.
-        let whole = rewrite || mode.rewritesSummary
-        guard let request = service.request(system: system, user: user, maxTokens: rewrite ? 10_000 : whole ? 6_000 : 4_000) else {
+        guard let request = service.request(system: system, user: user, maxTokens: rewrite ? 10_000 : 4_000) else {
             lastError = tr("The summary model’s address isn’t valid.")
             return
         }
-        let replacing = whole
+        // A full rewrite replaces the notes; an update adds to them.
+        let replacing = rewrite
         working = true
         lastAttempt = .now
         Task {
@@ -120,8 +115,8 @@ final class Summarizer {
     /// What was just said, in a few bullets: one request, made only when asked.
     func catchMeUp(_ t: Transcript, language: OutputLanguage, name: @escaping (SpeakerID) -> String) {
         guard service.isConfigured, !recapping, !t.lines.isEmpty else { return }
-        // About the last few minutes of talk.
-        let recent = t.summaryText(after: nil, closedOnly: false, limit: 3_000, name: name).text
+        // The last five minutes of talk; when nothing was said in them, the last stretch before.
+        let recent = t.recentText(minutes: 5, name: name)
         guard let request = service.request(system: CatchUpPrompt.system(language: language, extra: service.context),
                                             user: CatchUpPrompt.user(conversation: recent), maxTokens: 3_000) else { return }
         recapping = true
