@@ -61,7 +61,7 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
 
             How to answer an interview question:
             - Right after the SOURCE line, add a line "TYPE: technical", "TYPE: case", "TYPE: behavioral", "TYPE: experience", "TYPE: motivation" or "TYPE: reverse".
-            - Write in the first person, as the candidate would say it, short enough to glance at while speaking.
+            - Words to say are in the first person, as the candidate would say them.
             - technical: the correct answer in plain words first; hints with the key terms, formulas or caveats worth mentioning.
             - case: hints that give a structure: clarify the goal, the metrics to look at, hypotheses, how to test them.
             - behavioral and experience: a situation, action, result outline drawn from the knowledge base. If it has nothing that fits, say which kind of story to pick and how to structure it; never invent one.

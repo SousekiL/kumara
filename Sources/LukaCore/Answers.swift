@@ -134,20 +134,34 @@ public enum AnswerPrompt {
     }
 
     public static func system(language: OutputLanguage, mode: AssistantMode = .meeting, role: String = "", extra: String = "") -> String {
+        let body: String
+        if let spoken = language.spoken {
+            // Guide: the reader's own language points to what matters; the spoken language gives words to borrow.
+            body = """
+            After the header lines, exactly this and nothing more:
+            Line 1: what to say, in at most 15 words of \(language.explain) (about 25 characters in Chinese). The gist, not a sentence to read out.
+            Then 2 or 3 "- " bullets, each a few words of \(language.explain) naming one point, a colon, and a short phrase in \(spoken) to borrow, in quotes, at most 12 words. Example: - 先给结论："The short answer is that it depends on the baseline."
+            No full answer paragraph. Technical terms stay in \(spoken).
+            """
+        } else {
+            body = """
+            After the header lines: the answer in 1 or 2 short sentences, direct and easy to say aloud. Then at most 3 "- " bullets of hints, each under 12 words: a key fact, number, term or example worth mentioning. Leave the bullets out when the answer needs none.
+            Write in \(language.explain).
+            """
+        }
         var prompt = """
-        You assist someone taking part in a live conversation (a meeting, an interview, a lecture or a call). A question was just asked. Give them what they need to answer it well, short enough to read at a glance. \(language.answerRule)
+        You assist someone taking part in a live conversation (a meeting, an interview, a lecture or a call). A question was just asked. They will glance at your reply for a few seconds while the conversation goes on, so give only what helps them answer, and keep it short.
 
         Format
         Line 1 is exactly "SOURCE: knowledge" or "SOURCE: model" (see Sources).
-        Then the answer in 1 to 3 short sentences: direct, specific, easy to say aloud.
-        Then up to 3 "- " bullets of hints: a key fact, number, term or example worth mentioning. Leave the bullets out when the answer needs none.
+        \(body)
         No headings, no preamble, and don't repeat the question.
+        Reply with the final answer only. Never show your reasoning, second thoughts or corrections: decide first, then write once.
 
         Sources
         - When the reader's knowledge base is provided and covers the question, answer from it and keep its facts, names and numbers exactly. Where it differs from what you know, the knowledge base wins. Start with "SOURCE: knowledge".
         - When it doesn't cover the question, or none is provided, answer from your own knowledge and start with "SOURCE: model".
-        - Never invent facts about the reader: their experience, opinions, projects or numbers. For a personal question the knowledge base doesn't cover, give a short structure for answering instead (what to cover, in what order).
-        - When you aren't sure, say what you're unsure of in a few words instead of guessing.
+        - Never invent facts about the reader: their experience, opinions, projects or numbers. For a personal question the knowledge base doesn't cover, give the points to cover, in order, instead.
 
         When not to answer
         Reply with exactly SKIP when the text isn't a question that needs an answer: a greeting, small talk, a logistics check ("can you hear me?"), a rhetorical question, or a question the speaker goes on to answer.
@@ -155,7 +169,7 @@ public enum AnswerPrompt {
         The transcript comes from speech recognition and may contain errors; read through them.
         """
         let guidance = mode.answerGuidance(role: role)
-        if !guidance.isEmpty { prompt += "\n\n" + guidance }
+        if !guidance.isEmpty { prompt += "\n\n" + guidance + "\nWhatever the type, keep to the format and length above: the reader has seconds." }
         let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
         if !extra.isEmpty {
             prompt += "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)"
@@ -187,9 +201,16 @@ public enum AnswerPrompt {
         var fromKnowledge = false
         var kind: String?
         var body: [Substring] = []
+        var lines = SummaryPrompt.clean(reply).split(separator: "\n", omittingEmptySubsequences: false)
+        // A model that changed its mind halfway starts over with a new SOURCE line: keep only the last attempt.
+        if let last = lines.lastIndex(where: { $0.trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("SOURCE:") }) {
+            var start = last
+            if start > 0, lines[start - 1].trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("TYPE:") { start -= 1 }
+            lines = Array(lines[start...])
+        }
         // SOURCE and TYPE lead the reply, in either order.
         var leading = true
-        for line in SummaryPrompt.clean(reply).split(separator: "\n", omittingEmptySubsequences: false) {
+        for line in lines {
             let upper = line.trimmingCharacters(in: .whitespaces).uppercased()
             if leading, upper.hasPrefix("SOURCE:") {
                 fromKnowledge = upper.contains("KNOWLEDGE")

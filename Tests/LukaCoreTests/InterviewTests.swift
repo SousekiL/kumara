@@ -398,7 +398,7 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let summary = SummaryPrompt.system(language: guide, mode: .meeting)
         #expect(summary.contains("Write in Simplified Chinese") && summary.contains("keep in English, exactly as said"))
         let answers = AnswerPrompt.system(language: guide, mode: .interview, role: "Data Scientist")
-        #expect(answers.contains("Explain in Simplified Chinese") && answers.contains("goes in English, ready to say"))
+        #expect(answers.contains("words of Simplified Chinese") && answers.contains("phrase in English to borrow"))
         #expect(SummaryPrompt.system(language: guide, mode: .lecture).contains("keep in English"))
     }
 
@@ -458,5 +458,23 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let r = try #require(claude.request(apiKey: "k", system: "s", user: "u"))
         let body = try #require(JSONSerialization.jsonObject(with: r.httpBody!) as? [String: Any])
         #expect((body["thinking"] as? [String: String])?["type"] == "disabled")
+    }
+}
+
+
+@Suite struct AnswerFormatTests {
+    @Test func aRestartedReplyKeepsOnlyTheLastAttempt() {
+        let reply = "Sure. I'm a data scientist.\nHmm — wait, I should not invent specifics. Corrected version:\nSOURCE: knowledge\nTYPE: motivation\n要点：背景到岗位的连接\n- 背景：\"I started in sociology.\""
+        let a = AnswerPrompt.parse(reply)
+        #expect(a?.kind == "motivation" && a?.fromKnowledge == true)
+        #expect(a?.text.hasPrefix("要点") == true && a?.text.contains("Hmm") == false)
+    }
+
+    @Test func guideAnswersPointInChineseAndQuoteEnglish() {
+        let p = AnswerPrompt.system(language: OutputLanguage("Simplified Chinese", spoken: "English"), mode: .interview, role: "Data Scientist")
+        #expect(p.contains("at most 15 words of Simplified Chinese") && p.contains("short phrase in English to borrow"))
+        #expect(p.contains("No full answer paragraph") && p.contains("Never show your reasoning"))
+        let plain = AnswerPrompt.system(language: "English")
+        #expect(plain.contains("Write in English.") && !plain.contains("to borrow"))
     }
 }
