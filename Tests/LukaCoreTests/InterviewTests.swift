@@ -363,10 +363,14 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(talk.waitingQuestion(handled: [], channelsOnly: false, eagerness: .normal) != nil)
     }
 
-    @Test func lectureKeepsARewrittenOverview() {
-        #expect(AssistantMode.lecture.rewritesSummary && !AssistantMode.meeting.rewritesSummary && !AssistantMode.interview.rewritesSummary)
+    @Test func lectureNotesGrowBySectionWithTerms() {
+        #expect(!AssistantMode.lecture.rewritesSummary && !AssistantMode.meeting.rewritesSummary)
         let lecture = SummaryPrompt.system(language: "English", detail: .standard, mode: .lecture, extra: "x")
-        #expect(lecture.contains("complete updated summary") && lecture.contains("## Main points: at most 8") && lecture.hasSuffix("x"))
+        #expect(lecture.contains("Reply with only the lines to add") && lecture.contains("[Term]") && lecture.contains("## 1.") && lecture.hasSuffix("x"))
+        #expect(lecture.contains("**Decision:**"))
+        // Meetings use their own tags, not the bold labels.
+        let meeting = SummaryPrompt.system(language: "English", mode: .meeting)
+        #expect(!meeting.contains("**Decision:**") && meeting.contains("[Decision]"))
         let interview = SummaryPrompt.system(language: "English", mode: .interview)
         #expect(interview.contains("Reply with only the lines to add") && interview.contains("This is an interview"))
         #expect(AnswerPrompt.system(language: "English", mode: .interview).contains("first person"))
@@ -662,5 +666,16 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(a.contains("TYPE: for-me") && a.contains("① my position"))
         #expect(AnswerPrompt.parse("SOURCE: model\nTYPE: for-me\n① We should wait")?.kind == "for-me")
         #expect(CatchUpPrompt.system(language: OutputLanguage("English")).contains("Now: "))
+    }
+}
+
+@Suite struct KeyTermTests {
+    @Test func termsAreReadFromTheNotes() {
+        let notes = "## 1. CUPED\n- Variance drops by ρ²\n- [Term] CUPED — 实验前协变量调整 — uses a pre-period metric as a control variate\n- [Term] control variate — 控制变量"
+        let terms = KeyTerm.all(in: notes)
+        #expect(terms.count == 2)
+        #expect(terms[0] == KeyTerm(term: "CUPED", gloss: "实验前协变量调整", definition: "uses a pre-period metric as a control variate"))
+        #expect(terms[1].definition == nil)
+        #expect(KeyTerm.isTermLine("- [Term] x — y") && !KeyTerm.isTermLine("- plain"))
     }
 }

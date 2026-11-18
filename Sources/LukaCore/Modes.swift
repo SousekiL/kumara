@@ -29,8 +29,9 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// A lecture gets one structured summary, rewritten as it goes; the others get running notes.
-    public var rewritesSummary: Bool { self == .lecture }
+    /// Whether the summary is one overview rewritten whole. No mode does any more: a lecture's notes grow
+    /// section by section like the others, so nothing already read moves.
+    public var rewritesSummary: Bool { false }
 
     /// Lectures get no answers: their questions are the speaker's own, or put to the room.
     /// Meetings only get help with a factual question; interviews with every interview question.
@@ -46,7 +47,7 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
     var summaryGuidance: String {
         switch self {
         case .lecture:
-            "This is a talk, lecture, podcast or video with a main line of argument. Follow the speaker's own structure: the thesis, the main arguments, the evidence or examples behind them, and the takeaways. Define the key terms the speaker introduces."
+            "This is a talk, lecture, podcast or video with a main line of argument, and the reader wants to follow it now and review it later. Number the headings in order (\"## 1. …\", \"## 2. …\"), one per part of the talk, following the speaker's own structure. Under each, 1 to 3 bullets: the point, the example or evidence behind it, and any formula or number. When the speaker stresses something (\"the key point is…\"), keep it. When the speaker introduces or defines a term, add a bullet of exactly this shape: \"[Term] the term as said — a short gloss in the notes' language — a one-line definition\". Each term once."
         case .meeting:
             "This is a working meeting. Be sure to capture decisions, commitments with their owners and dates, numbers, and questions left open. Start such bullets with a tag, kept in English: [Decision], [Action → owner] (the owner's name, or me when it is the reader), [Open ?] for a question left open, [Number] for a figure worth keeping. When something said later reverses an earlier decision, add a bullet starting with ↺ that says what changed; never edit the earlier one."
         case .interview:

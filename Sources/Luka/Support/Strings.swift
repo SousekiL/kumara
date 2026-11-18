@@ -585,5 +585,6 @@ enum Strings {
         "Separate names with commas. In meetings, lines that mention one show under For you, and questions put to you get a reply outline.": "多个名字用逗号分开。会议中提到这些名字的话会显示在“跟你有关”里，问你的问题会给出回复提纲。",
         "You": "你",
         "Your names": "你的名字",
+        "Key terms (%d)": "术语（%d）",
     ]
 }

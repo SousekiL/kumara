@@ -196,6 +196,10 @@ struct SummaryPanel: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(.quaternary.opacity(0.45), in: .rect(cornerRadius: 8))
                 }
+                let terms = KeyTerm.all(in: summary.text)
+                if !terms.isEmpty {
+                    KeyTermsBox(terms: terms, fontSize: model.assistant.fontSize, family: model.fontFamily)
+                }
                 // While listening, the lines just added stand out and the rest steps back.
                 SummaryText(markdown: summary.text, fontSize: model.assistant.fontSize, family: model.fontFamily,
                             freshFrom: model.isLive(transcript) && model.isListening ? summary.freshLine : nil)
@@ -327,11 +331,14 @@ struct SummaryText: View {
     }
 
     var body: some View {
-        let lines = lines
+        // Term lines are gathered in the key-terms box instead; the others keep their place in the count,
+        // so the fresh lines are still found by index.
+        let lines = Array(lines.enumerated()).filter { !KeyTerm.isTermLine($0.element.text) || $0.element.kind != .bullet }
         let leading = fontSize * 0.42
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                let old = freshFrom.map { index < $0 } ?? false
+            ForEach(Array(lines.enumerated()), id: \.element.offset) { index, entry in
+                let line = entry.element
+                let old = freshFrom.map { entry.offset < $0 } ?? false
                 Group {
                     switch line.kind {
                     case .heading:
@@ -390,6 +397,53 @@ struct SummaryText: View {
                 search = end..<plain.endIndex
             }
         }
+    }
+}
+
+/// The terms a lecture introduced, gathered from the notes: closed to a count until opened.
+private struct KeyTermsBox: View {
+    let terms: [KeyTerm]
+    let fontSize: Double
+    let family: String
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button { withAnimation(.smooth(duration: 0.2)) { open.toggle() } } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "character.book.closed")
+                    Text(String(format: tr("Key terms (%d)"), terms.count))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(LukaTheme.accent)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            if open {
+                ForEach(terms) { term in
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(term.term).font(LukaFont.font(family, size: max(11, fontSize - 1), weight: .semibold))
+                            if let gloss = term.gloss {
+                                Text(gloss).font(LukaFont.font(family, size: max(11, fontSize - 1))).foregroundStyle(.secondary)
+                            }
+                        }
+                        if let definition = term.definition {
+                            Text(definition)
+                                .font(LukaFont.font(family, size: max(11, fontSize - 2)))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+        .textSelection(.enabled)
+        .lukaCard()
     }
 }
 

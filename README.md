@@ -134,6 +134,10 @@ In Interview mode an answer is a skeleton to speak from, not a script: a one-lin
 
 After you answer, polishing shows at most one fix to use in your next turn. Whether the answer covered the question, the story it used and a smoother version are kept for the review afterwards. The Summary tab lists every question so far with ✓ answered / ⚠ missed a part and the story used, built from the answers themselves at no extra cost. Each session remembers its mode.
 
+## Lectures: sections and key terms
+
+Lecture notes now grow like the others instead of being rewritten: a numbered "## " section per part of the talk, frozen once the talk moves on, so nothing you've read moves. Terms the speaker introduces are noted as "[Term] term — gloss — definition" and gathered in a **Key terms** box above the notes.
+
 ## Meetings: for you, tags and catching up
 
 Set your names in Settings › Knowledge › You. In Meeting mode, the notes start with a **For you** strip: the latest lines that mention you by name and the tasks the notes give you. Notes tag bullets [Decision], [Action → owner], [Open ?] and [Number], each in its own color, and a reversed decision gets a ↺ line instead of an edit. A question put to you gets a three-cue reply outline (my position, the evidence, the next step). The ↺-clock button above the notes is **Catch me up**: one request, only when pressed, for what was just said.

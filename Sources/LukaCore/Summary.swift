@@ -254,6 +254,8 @@ public enum SummaryPrompt {
     public static func system(language: OutputLanguage, detail: SummaryDetail = .concise, mode: AssistantMode = .meeting, extra: String = "") -> String {
         if mode.rewritesSummary { return overviewSystem(language: language, detail: detail, mode: mode, extra: extra) }
         let limits = detail.limits
+        // Meetings tag bullets in their own way (see the mode's guidance).
+        let labelRule = mode == .meeting ? "" : "- Start a bullet with a bold label when it is one of these, translated into the notes' language: \"**Decision:**\" for something agreed, \"**Action:**\" for a task (with its owner when named), \"**Question:**\" for a question left open."
         var prompt = """
         You keep running notes of a conversation that is being transcribed live (a meeting, an interview, a call, a lecture, a podcast or a video). The reader follows the notes as they grow and reads only the newest lines to keep up, so what is already written stays exactly as it is. \(language.summaryRule)
 
@@ -264,7 +266,7 @@ public enum SummaryPrompt {
         - Name a person only when who said it changes the meaning: who owns a decision or task, who committed to something, who disagrees with whom. Never write placeholder labels such as "Speaker 1"; leave the person out, or use their role ("the host", "the interviewer") when the transcript makes it clear.
         - Leave out greetings, small talk, banter, filler and repetition. If a joke carries a real point, state the point.
         - Usually \(limits.bullets) bullets per update; fewer when little was said. Each bullet is one sentence of at most \(limits.words) words (about \(limits.words * 2) characters in Chinese, Japanese or Korean) that makes sense on its own, without the earlier notes.
-        - Start a bullet with a bold label when it is one of these, translated into the notes' language: "**Decision:**" for something agreed, "**Action:**" for a task (with its owner when named), "**Question:**" for a question left open.
+        \(labelRule)
         - If the new part corrects or reverses something noted earlier, add a bullet saying so. Don't restate the earlier line.
         - If the new part adds nothing worth noting, reply with exactly NONE.
 
@@ -475,5 +477,46 @@ extension Transcript {
             if last == nil { last = line.id }
         }
         return (picked.joined(separator: "\n"), last, truncated)
+    }
+}
+
+/// A term a lecture introduced, written in the notes as "[Term] term — gloss — definition".
+public struct KeyTerm: Equatable, Sendable, Identifiable {
+    public let term: String
+    public let gloss: String?
+    public let definition: String?
+    public var id: String { term }
+
+    public init(term: String, gloss: String?, definition: String?) {
+        self.term = term
+        self.gloss = gloss
+        self.definition = definition
+    }
+
+    public static func isTermLine(_ line: String) -> Bool {
+        body(line) != nil
+    }
+
+    /// Every term in the notes, once each, in order.
+    public static func all(in notes: String) -> [KeyTerm] {
+        var seen: Set<String> = []
+        var out: [KeyTerm] = []
+        for line in notes.split(separator: "\n") {
+            guard let body = body(String(line)) else { continue }
+            let parts = body.components(separatedBy: " — ").map { $0.trimmingCharacters(in: .whitespaces) }
+            guard let term = parts.first, !term.isEmpty, seen.insert(term.lowercased()).inserted else { continue }
+            out.append(KeyTerm(term: term,
+                               gloss: parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil,
+                               definition: parts.count > 2 ? parts[2...].joined(separator: " — ") : nil))
+        }
+        return out
+    }
+
+    /// The text after "[Term]", or nil for any other line.
+    private static func body(_ line: String) -> String? {
+        var s = line.trimmingCharacters(in: .whitespaces)
+        for marker in ["- ", "* ", "• "] where s.hasPrefix(marker) { s = String(s.dropFirst(marker.count)) }
+        guard s.lowercased().hasPrefix("[term]") else { return nil }
+        return String(s.dropFirst(6)).trimmingCharacters(in: .whitespaces)
     }
 }
