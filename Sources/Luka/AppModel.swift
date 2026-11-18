@@ -89,10 +89,34 @@ final class AppModel {
     var separatesSpeakers: Bool {
         didSet {
             store(separatesSpeakers, "separatesSpeakers")
+            // Set by hand: it's the user's choice from now on.
+            if !syncingChannels { autoSeparated = false }
             // It only works with both sources, so turning it on picks them; that change reroutes by itself.
             if separatesSpeakers, audioSource != .both, mode != .threeWay { audioSource = .both } else { routingChanged() }
         }
     }
+    /// Me / Them was turned on by Interview answers, so it goes off again when they stop.
+    private var autoSeparated: Bool {
+        get { defaults.bool(forKey: "autoSeparated") }
+        set { defaults.set(newValue, forKey: "autoSeparated") }
+    }
+    @ObservationIgnored private var syncingChannels = false
+
+    /// Interview answers need to know which words are mine, so they turn Me / Them on, and off again after.
+    func syncInterviewChannels() {
+        let wanted = summarizer.mode == .interview && answerer.enabled
+        syncingChannels = true
+        defer { syncingChannels = false }
+        if wanted, !separatesSpeakers, mode != .threeWay {
+            separatesSpeakers = true
+            autoSeparated = true
+            show(tr("Me / Them is on for Interview answers. Wear headphones."))
+        } else if !wanted, autoSeparated {
+            autoSeparated = false
+            if separatesSpeakers { separatesSpeakers = false }
+        }
+    }
+
     /// In Me / Them mode, whether your own words are translated too, or only written down.
     var translatesMyVoice: Bool { didSet { store(translatesMyVoice, "translatesMyVoice"); if splitsBySource { streamSettingsChanged() } } }
     /// Keep the latest question someone asked above the captions.
@@ -287,6 +311,8 @@ final class AppModel {
                 self.handleTranslation(event, lane: lane)
             }
         }
+        summarizer.onModeChange = { [weak self] in self?.syncInterviewChannels() }
+        answerer.onEnabledChange = { [weak self] in self?.syncInterviewChannels() }
         answerer.onAnswer = { [weak self] in
             guard let self else { return }
             // A fresh answer is what the reader wants to see next.
@@ -317,6 +343,7 @@ final class AppModel {
                 self?.flushUsage()
             }
         }
+        syncInterviewChannels()
     }
 
     func applyActivationPolicy() {
@@ -744,7 +771,7 @@ final class AppModel {
         if !speaker.name.isEmpty { return speaker.name }
         switch Channel(speaker.id) {
         case .me: return tr("Me")
-        case .them: return tr("Them")
+        case .them: return speaker.id.epoch == -1 ? tr("Them") : tr("Them") + " \(speaker.ordinal)"
         case nil: return String(format: tr("Speaker %d"), speaker.ordinal)
         }
     }
@@ -798,7 +825,7 @@ final class AppModel {
             if !speaker.name.isEmpty { return speaker.name }
             switch Channel(speaker.id) {
             case .me: return "Me"
-            case .them: return "Them"
+            case .them: return speaker.id.epoch == -1 ? "Them" : "Them \(speaker.ordinal)"
             case nil: return "Speaker \(speaker.ordinal)"
             }
         }

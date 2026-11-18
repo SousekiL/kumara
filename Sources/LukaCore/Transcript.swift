@@ -21,8 +21,21 @@ public enum Channel: String, Sendable, Codable, CaseIterable {
     public var speakerID: SpeakerID { SpeakerID(epoch: -1, label: rawValue) }
 
     public init?(_ id: SpeakerID?) {
-        guard let id, id.epoch == -1, let c = Channel(rawValue: id.label) else { return nil }
+        guard let id else { return nil }
+        // Several people on the Mac audio are told apart by diarization: "them-<label>".
+        if id.label.hasPrefix(Self.themPrefix) {
+            self = .them
+            return
+        }
+        guard id.epoch == -1, let c = Channel(rawValue: id.label) else { return nil }
         self = c
+    }
+
+    static let themPrefix = "them-"
+
+    /// One of several people on the Mac audio, as told apart by Soniox in the current Them stream.
+    public static func themSpeaker(epoch: Int, label: String) -> SpeakerID {
+        SpeakerID(epoch: epoch, label: themPrefix + label)
     }
 }
 
@@ -142,6 +155,8 @@ public final class Transcript: Identifiable {
 
     /// The line still growing, per channel; "" is the single stream of the normal modes.
     @ObservationIgnored private var openLines: [String: Int] = [:]
+    /// Counts Them streams, so speaker labels from a reconnected stream aren't taken for earlier people.
+    @ObservationIgnored private var themEpoch = 1_000_000
     /// Live text per channel; `provisional` shows the most recently updated one.
     @ObservationIgnored private var provisionals: [String: Provisional] = [:]
     @ObservationIgnored public private(set) var nextLineID = 0
@@ -234,7 +249,13 @@ public final class Transcript: Identifiable {
                 if token.isFinal { closeOpenLine(key) }
                 continue
             }
-            let speaker = channel.map { register(channel: $0) } ?? token.speaker.map { register(label: $0) }
+            let speaker: SpeakerID?
+            switch channel {
+            case .me: speaker = register(channel: .me)
+            // The other side can be several people: keep Soniox's labels apart within the channel.
+            case .them: speaker = token.speaker.map { registerThem(label: $0) } ?? register(channel: .them)
+            case nil: speaker = token.speaker.map { register(label: $0) }
+            }
             if token.isFinal {
                 if token.isTranslation {
                     if let i = appendTranslation(token, speaker: speaker) { translated.insert(i) }
@@ -347,6 +368,8 @@ public final class Transcript: Identifiable {
     /// A Me / Them stream only resets its own channel: its speaker never changes.
     public func beginStream(channel: Channel? = nil) {
         if let channel {
+            // A new Them stream numbers its speakers from 1 again: they may be different people.
+            if channel == .them { themEpoch += 1 }
             closeOpenLine(channel.rawValue)
             provisionals[channel.rawValue] = nil
             provisional = provisionals.values.first
@@ -440,6 +463,18 @@ public final class Transcript: Identifiable {
             speakers[id] = Speaker(id: id, ordinal: nextOrdinal, name: "", colorIndex: nextColor % Self.paletteSize)
             speakerOrder.append(id)
             nextOrdinal += 1
+            nextColor += 1
+        }
+        return id
+    }
+
+    /// Them speakers get their own numbering ("Them 1", "Them 2"), kept in `ordinal`.
+    private func registerThem(label: String) -> SpeakerID {
+        let id = Channel.themSpeaker(epoch: themEpoch, label: label)
+        if speakers[id] == nil {
+            let ordinal = speakers.values.filter { $0.id.label.hasPrefix(Channel.themPrefix) }.count + 1
+            speakers[id] = Speaker(id: id, ordinal: ordinal, name: "", colorIndex: nextColor % Self.paletteSize)
+            speakerOrder.append(id)
             nextColor += 1
         }
         return id

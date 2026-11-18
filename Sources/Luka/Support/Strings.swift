@@ -199,6 +199,7 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Me / Them is on for Interview answers. Wear headphones.": "面试回答已自动开启“我 / 对方”，请戴耳机。",
         "You said": "你说的",
         "Polish": "润色",
         "Polish my answers": "润色我的回答",

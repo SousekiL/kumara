@@ -13,17 +13,29 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let t = Transcript()
         t.beginStream(channel: .them)
         t.beginStream(channel: .me)
-        // Diarization labels are ignored on a channel: the channel is the speaker.
+        // Me is always one speaker; Them keeps Soniox's labels apart, still on the Them side.
         t.ingest(tokens([("Tell", true, "original"), (" me", true, "original")], speaker: "1"), channel: .them)
         t.ingest(tokens([("Sure", true, nil)], speaker: "2"), channel: .me)
-        t.ingest(tokens([(" about yourself?", true, "original")], speaker: "3"), channel: .them)
+        t.ingest(tokens([(" about yourself?", true, "original")], speaker: "1"), channel: .them)
+        t.ingest(tokens([("And your team?", true, "original")], speaker: "2"), channel: .them)
 
-        #expect(t.lines.count == 2)
+        #expect(t.lines.count == 3)
         #expect(t.lines[0].original == "Tell me about yourself?")
-        #expect(t.lines[0].speaker == Channel.them.speakerID)
-        #expect(t.lines[1].original == "Sure")
+        #expect(Channel(t.lines[0].speaker) == .them)
         #expect(t.lines[1].speaker == Channel.me.speakerID)
-        #expect(t.visibleSpeakers.count == 2)
+        #expect(Channel(t.lines[2].speaker) == .them && t.lines[2].speaker != t.lines[0].speaker)
+        #expect(t.visibleSpeakers.count == 3)
+        let them = t.visibleSpeakers.filter { Channel($0.id) == .them }.map(\.ordinal)
+        #expect(them == [1, 2])
+    }
+
+    @Test func aNewThemStreamMeansNewPeople() {
+        let t = Transcript()
+        t.beginStream(channel: .them)
+        t.ingest(tokens([("Hi.", true, nil), ("<end>", true, nil)], speaker: "1"), channel: .them)
+        t.beginStream(channel: .them)
+        t.ingest(tokens([("Hello.", true, nil), ("<end>", true, nil)], speaker: "1"), channel: .them)
+        #expect(t.lines[0].speaker != t.lines[1].speaker)
     }
 
     @Test func translationsFollowTheirChannel() {

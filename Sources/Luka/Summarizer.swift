@@ -22,7 +22,8 @@ final class Summarizer {
     /// The user's own additions to the built-in prompt.
     var instructions: String { didSet { defaults.set(instructions, forKey: "summary.instructions") } }
     /// The kind of conversation: sets how the summary is kept and how readily questions are answered.
-    var mode: AssistantMode { didSet { defaults.set(mode.rawValue, forKey: "assistant.mode") } }
+    var mode: AssistantMode { didSet { defaults.set(mode.rawValue, forKey: "assistant.mode"); onModeChange() } }
+    @ObservationIgnored var onModeChange: () -> Void = {}
     var fontSize: Double { didSet { defaults.set(fontSize, forKey: "summary.fontSize") } }
     static let fontRange = 11.0...22.0
     /// The summary column in the transcript window.
