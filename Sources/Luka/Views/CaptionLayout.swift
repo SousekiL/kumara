@@ -27,10 +27,12 @@ struct CaptionMetrics: Equatable {
     let fontSize: CGFloat
     /// Font family; empty is the system font.
     var family: String = ""
+    /// Size of the original-language line; nil follows the caption size.
+    var originalSize: CGFloat? = nil
 
     var font: NSFont { LukaFont.ns(family, size: fontSize, weight: .medium) }
     var lineHeight: CGFloat { ceil(fontSize * 1.36) }
-    var originalFontSize: CGFloat { max(12, (fontSize * 0.72).rounded()) }
+    var originalFontSize: CGFloat { originalSize ?? AppModel.defaultOriginalSize(for: fontSize) }
     var originalFont: NSFont { LukaFont.ns(family, size: originalFontSize, weight: .regular) }
     var originalLineHeight: CGFloat { ceil(originalFontSize * 1.4) }
     var labelFontSize: CGFloat { max(10, (fontSize * 0.54).rounded()) }

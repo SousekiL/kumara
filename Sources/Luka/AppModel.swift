@@ -147,6 +147,11 @@ final class AppModel {
 
     var captionLines: Int { didSet { store(captionLines, "captionLines") } }
     var captionFontSize: Double { didSet { store(captionFontSize, "captionFontSize") } }
+    /// The original-language line under a translation, sized on its own.
+    var captionOriginalFontSize: Double { didSet { store(captionOriginalFontSize, "captionOriginalFontSize") } }
+    static let captionOriginalFontRange = 11.0...48.0
+    /// Where the original line starts out: 80% of the caption size.
+    static func defaultOriginalSize(for size: Double) -> Double { max(12, (size * 0.8).rounded()) }
     var captionShowsOriginal: Bool { didSet { store(captionShowsOriginal, "captionShowsOriginal") } }
     /// In three-way mode, the one translation captions show; empty shows them all.
     var captionLanguage: String { didSet { store(captionLanguage, "captionLanguage") } }
@@ -235,6 +240,8 @@ final class AppModel {
         quiet = QuietGate(sleepAfterSeconds: d.object(forKey: "quietSeconds") == nil ? 180 : d.integer(forKey: "quietSeconds"))
         captionLines = d.object(forKey: "captionLines") as? Int ?? 2
         captionFontSize = d.object(forKey: "captionFontSize") as? Double ?? 24
+        captionOriginalFontSize = d.object(forKey: "captionOriginalFontSize") as? Double
+            ?? Self.defaultOriginalSize(for: d.object(forKey: "captionFontSize") as? Double ?? 24)
         captionShowsOriginal = d.bool(forKey: "captionShowsOriginal")
         captionLanguage = d.string(forKey: "captionLanguage") ?? ""
         fontFamily = d.string(forKey: "fontFamily") ?? ""

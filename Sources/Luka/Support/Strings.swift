@@ -199,6 +199,7 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Original text size": "原文字号",
         "Summary and Answers": "总结和回答",
         "Unpin Question": "取消固定问题",
         "Not answering in Lecture mode": "讲座模式下不回答问题",

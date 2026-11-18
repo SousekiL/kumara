@@ -9,7 +9,7 @@ struct CaptionRoot: View {
     @State private var languagesShown = false
     @Namespace private var glass
 
-    private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize, family: model.fontFamily) }
+    private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize, family: model.fontFamily, originalSize: model.captionOriginalFontSize) }
 
     var body: some View {
         let showToolbar = (hovering || languagesShown || model.notice != nil) && !model.locked

@@ -184,6 +184,13 @@ private struct CaptionSettings: View {
                         Text(verbatim: "\(Int(model.captionFontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
                     }
                 }
+                LabeledContent(tr("Original text size")) {
+                    HStack {
+                        Slider(value: $model.captionOriginalFontSize, in: AppModel.captionOriginalFontRange, step: 1)
+                        Text(verbatim: "\(Int(model.captionOriginalFontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
+                    }
+                }
+                .disabled(!model.captionShowsOriginal)
                 Stepper(value: $model.captionLines, in: AppModel.captionLineRange) {
                     LabeledContent(tr("Lines"), value: "\(model.captionLines)")
                 }

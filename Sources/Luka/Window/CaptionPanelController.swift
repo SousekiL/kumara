@@ -91,7 +91,7 @@ final class CaptionPanelController: NSObject, NSWindowDelegate {
 
     // MARK: Frame rules
 
-    private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize, family: model.fontFamily) }
+    private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize, family: model.fontFamily, originalSize: model.captionOriginalFontSize) }
 
     private var targetHeight: CGFloat { Self.chrome + metrics.height(lines: model.captionLines) }
 
