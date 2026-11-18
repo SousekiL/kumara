@@ -578,5 +578,12 @@ enum Strings {
         "Nothing in your knowledge base fits: pick a story of this kind.": "知识库里没有合适的素材：挑一个这类的经历来讲。",
         "Questions so far": "已问到的问题",
         "Used": "用了",
+        "Catch me up": "帮我跟上",
+        "Catch me up: what was just said": "帮我跟上：刚才说了什么",
+        "Close": "关闭",
+        "For you": "跟你有关",
+        "Separate names with commas. In meetings, lines that mention one show under For you, and questions put to you get a reply outline.": "多个名字用逗号分开。会议中提到这些名字的话会显示在“跟你有关”里，问你的问题会给出回复提纲。",
+        "You": "你",
+        "Your names": "你的名字",
     ]
 }

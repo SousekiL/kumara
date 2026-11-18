@@ -134,6 +134,10 @@ In Interview mode an answer is a skeleton to speak from, not a script: a one-lin
 
 After you answer, polishing shows at most one fix to use in your next turn. Whether the answer covered the question, the story it used and a smoother version are kept for the review afterwards. The Summary tab lists every question so far with ✓ answered / ⚠ missed a part and the story used, built from the answers themselves at no extra cost. Each session remembers its mode.
 
+## Meetings: for you, tags and catching up
+
+Set your names in Settings › Knowledge › You. In Meeting mode, the notes start with a **For you** strip: the latest lines that mention you by name and the tasks the notes give you. Notes tag bullets [Decision], [Action → owner], [Open ?] and [Number], each in its own color, and a reversed decision gets a ↺ line instead of an edit. A question put to you gets a three-cue reply outline (my position, the evidence, the next step). The ↺-clock button above the notes is **Catch me up**: one request, only when pressed, for what was just said.
+
 ## Sessions: tags and batch actions
 
 Right-click a session › **Tags…** to tag it; tags show under each session and in a bar above the list, where choosing one lists only sessions with it. ⌘- or ⇧-click selects several sessions: right-click for **Tag**, **Copy** or **Delete** on all of them at once, or use the buttons in the window.

@@ -49,7 +49,11 @@ struct SummaryPanel: View {
                 .onChange(of: transcript.answers.count, initial: true) { seenAnswers = transcript.answers.count }
             } else {
                 bar { summaryStatus } actions: {
-                    ProgressView().controlSize(.small).opacity(summarizer.working ? 1 : 0)
+                    ProgressView().controlSize(.small).opacity(summarizer.working || summarizer.recapping ? 1 : 0)
+                    // One request, only when pressed: what was just said, for when attention slipped.
+                    Button { model.catchMeUp(transcript) } label: { Image(systemName: "clock.arrow.circlepath") }
+                        .help(tr("Catch me up: what was just said"))
+                        .disabled(!model.assistant.isConfigured || summarizer.recapping || transcript.lines.isEmpty)
                     Button { model.refreshSummary(transcript) } label: { Image(systemName: "arrow.clockwise") }
                         .help(tr("Write the notes again from the whole transcript"))
                         .disabled(!model.assistant.isConfigured || summarizer.working || transcript.lines.isEmpty)
@@ -148,6 +152,22 @@ struct SummaryPanel: View {
     }
 
     @ViewBuilder private var summary: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let recap = summarizer.recap, recap.session == transcript.id {
+                RecapCard(text: recap.text, at: recap.at, fontSize: model.assistant.fontSize, family: model.fontFamily) {
+                    summarizer.dismissRecap()
+                }
+            }
+            // In a meeting, what's been asked of me stays at the top, found without asking the model.
+            if sessionMode == .meeting {
+                let items = transcript.forMe(names: model.assistant.names)
+                if !items.isEmpty { ForMeStrip(items: items, fontSize: model.assistant.fontSize, family: model.fontFamily) }
+            }
+            modeSummary
+        }
+    }
+
+    @ViewBuilder private var modeSummary: some View {
         let log = sessionMode == .interview ? transcript.questionLog : []
         if !log.isEmpty || (sessionMode == .interview && transcript.summary == nil && !summarizer.enabled) {
             // In an interview the summary tab leads with the questions asked and how each went;
@@ -345,7 +365,92 @@ struct SummaryText: View {
     }
 
     private func inline(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+        var text = (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+        Self.colorTags(&text)
+        return text
+    }
+
+    /// Meeting tags in the notes, each in its own color so decisions, tasks and open questions can be scanned.
+    static func colorTags(_ text: inout AttributedString) {
+        let plain = String(text.characters)
+        let tags: [(prefix: String, color: Color)] = [
+            ("[Decision]", .green), ("[Action", LukaTheme.accent), ("[Open", .orange), ("[Number]", .purple), ("↺", .orange),
+        ]
+        for tag in tags {
+            var search = plain.startIndex..<plain.endIndex
+            while let found = plain.range(of: tag.prefix, options: .caseInsensitive, range: search) {
+                // A bracket tag runs to its closing bracket; ↺ is a single mark.
+                let end = tag.prefix.hasPrefix("[") ? (plain[found.lowerBound...].firstIndex(of: "]").map { plain.index(after: $0) } ?? found.upperBound) : found.upperBound
+                let lower = plain.distance(from: plain.startIndex, to: found.lowerBound)
+                let length = plain.distance(from: found.lowerBound, to: end)
+                let a = text.characters.index(text.startIndex, offsetBy: lower)
+                let b = text.characters.index(a, offsetBy: length)
+                text[a..<b].foregroundColor = tag.color
+                text[a..<b].font = .system(size: 11, weight: .semibold)
+                search = end..<plain.endIndex
+            }
+        }
+    }
+}
+
+/// A "catch me up" reply, dismissible, above the notes.
+private struct RecapCard: View {
+    let text: String
+    let at: Date
+    let fontSize: Double
+    let family: String
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label(tr("Catch me up"), systemImage: "clock.arrow.circlepath")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(LukaTheme.accent)
+                Text(at.formatted(date: .omitted, time: .shortened))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                Button(action: dismiss) { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .help(tr("Close"))
+            }
+            AnswerText(markdown: text, fontSize: fontSize, family: family)
+        }
+        .lukaCard(active: true)
+    }
+}
+
+/// In a meeting: lines that mention me by name, and tasks the notes give me.
+private struct ForMeStrip: View {
+    let items: [ForMeItem]
+    let fontSize: Double
+    let family: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(tr("For you"), systemImage: "person.crop.circle.badge.exclamationmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            ForEach(items) { item in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: item.kind == .mention ? "quote.bubble" : "checklist")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(item.text)
+                        .font(LukaFont.font(family, size: max(11, fontSize - 1)))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.08), in: .rect(cornerRadius: LukaTheme.cardRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: LukaTheme.cardRadius, style: .continuous).strokeBorder(Color.orange.opacity(0.25), lineWidth: 0.5)
+        }
     }
 }
 
@@ -798,6 +903,7 @@ enum QuestionKind {
         case "motivation": tr("Motivation")
         case "reverse": tr("Your questions")
         case "polish": tr("Polish")
+        case "for-me": tr("For you")
         default: kind
         }
     }
@@ -810,6 +916,7 @@ enum QuestionKind {
         case "experience": .green
         case "motivation": .pink
         case "polish": .teal
+        case "for-me": .indigo
         default: .gray
         }
     }

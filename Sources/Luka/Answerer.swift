@@ -164,7 +164,7 @@ final class Answerer {
         let user = AnswerPrompt.user(question: line.original, asker: line.speaker.map(name) ?? "someone",
                                      conversation: conversation, knowledge: knowledge.excerpts(for: line.original),
                                      previous: previous)
-        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.note),
+        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context),
                                             user: user, maxTokens: 4_000, stream: true) else { return }
         write(request, into: t, live: Live(session: t.id, id: line.id, question: line.original, polish: false))
     }
@@ -175,7 +175,7 @@ final class Answerer {
         handled.formUnion(answer.ids)
         let user = PolishPrompt.user(question: answer.question, answer: answer.text,
                                      knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
-        guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.note),
+        guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.context),
                                             user: user, maxTokens: 3_000, stream: true) else { return }
         write(request, into: t, live: Live(session: t.id, id: id, question: answer.text, polish: true))
     }

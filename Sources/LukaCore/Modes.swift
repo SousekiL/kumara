@@ -48,7 +48,7 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
         case .lecture:
             "This is a talk, lecture, podcast or video with a main line of argument. Follow the speaker's own structure: the thesis, the main arguments, the evidence or examples behind them, and the takeaways. Define the key terms the speaker introduces."
         case .meeting:
-            "This is a working meeting. Be sure to capture decisions, commitments with their owners and dates, numbers, and questions left open."
+            "This is a working meeting. Be sure to capture decisions, commitments with their owners and dates, numbers, and questions left open. Start such bullets with a tag, kept in English: [Decision], [Action → owner] (the owner's name, or me when it is the reader), [Open ?] for a question left open, [Number] for a figure worth keeping. When something said later reverses an earlier decision, add a bullet starting with ↺ that says what changed; never edit the earlier one."
         case .interview:
             "This is an interview. Note each question the interviewer asks as a \"**Question:**\" bullet, shortened, and then in one bullet what the answer covered. Note everything said about the role, the team, the process, pay and next steps."
         }
@@ -63,6 +63,7 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
             return """
             This is a meeting. Most questions in a meeting pass between the participants and need no help from you. Reply SKIP to: opinions and discussion ("what do you think?", "should we…?"), check-ins and confirmations ("right?", "does that work?", "any objections?"), logistics and scheduling, requests to someone about their own work or status ("did you send it?", "where are we on…?"), rhetorical questions, and anything answered in the next lines.
             Answer only a factual or technical question where a short, correct answer would help the reader take part: a definition, a fact, a number, how something works. When in doubt, SKIP.
+            One exception: a question put to the reader themselves (by name, or "you" right after the reader spoke) always gets an answer. Add a line "TYPE: for-me" right after the SOURCE line, and instead of the bullets give 3 cue lines, starting with ①, ② and ③, each at most 10 words, in the words the reader could say: ① my position ② the evidence or number behind it ③ the next step or what I need. Ground them in the conversation and the knowledge base; when unsure, a cue can be to ask a clarifying question. Never invent the reader's numbers or commitments.
             """
         case .interview:
             let role = role.trimmingCharacters(in: .whitespacesAndNewlines)

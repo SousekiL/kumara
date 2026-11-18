@@ -505,6 +505,7 @@ private struct KnowledgeSettings: View {
 
     var body: some View {
         @Bindable var answerer = model.answerer
+        @Bindable var service = model.assistant
         Form {
             Section {
                 ForEach(answerer.sources) { source in
@@ -534,6 +535,13 @@ private struct KnowledgeSettings: View {
                 Text(tr("Files and folders"))
             } footer: {
                 Text(tr("Answers use this first, and the model’s own knowledge only for what it doesn’t cover. Folders are read where they are (Markdown, text, PDF, Word), including subfolders, and reread at the start of every session, so an existing notes or memory folder works as it is. The excerpts that match a question are sent to the model’s provider."))
+            }
+            Section {
+                TextField(tr("Your names"), text: $service.readerNames, prompt: Text(verbatim: "Felix, Weifeng"))
+            } header: {
+                Text(tr("You"))
+            } footer: {
+                Text(tr("Separate names with commas. In meetings, lines that mention one show under For you, and questions put to you get a reply outline."))
             }
             Section {
                 TextField(tr("My notes"), text: $answerer.notes,

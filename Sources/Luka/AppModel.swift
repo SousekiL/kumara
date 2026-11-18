@@ -974,6 +974,10 @@ final class AppModel {
         }
     }
 
+    func catchMeUp(_ t: Transcript) {
+        summarizer.catchMeUp(t, language: assistantLanguage, name: summaryName(in: t))
+    }
+
     func refreshSummary(_ t: Transcript) {
         summarizer.refresh(t, mode: assistantMode, language: assistantLanguage, name: summaryName(in: t))
     }

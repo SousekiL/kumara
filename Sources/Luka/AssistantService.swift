@@ -20,6 +20,14 @@ final class AssistantService {
     static let fontRange = 11.0...22.0
     /// About this conversation, in the user's words: added to the summary's and the answers' prompts.
     var note: String { didSet { defaults.set(note, forKey: "assistant.note") } }
+    /// The names the reader goes by, so a meeting turning to them is noticed.
+    var readerNames: String { didSet { defaults.set(readerNames, forKey: "assistant.readerNames") } }
+    var names: [String] { ReaderNames.parse(readerNames) }
+    /// What the prompts add about the reader and this conversation.
+    var context: String {
+        [ReaderNames.promptLine(names), note.trimmingCharacters(in: .whitespacesAndNewlines)]
+            .filter { !$0.isEmpty }.joined(separator: "\n")
+    }
 
     private(set) var testResult: String?
     private(set) var testing = false
@@ -33,6 +41,7 @@ final class AssistantService {
         language = d.string(forKey: "summary.language") ?? ""
         // 14 pt reads comfortably at arm's length in a side column; 13 is the system's body size.
         fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 14
+        readerNames = d.string(forKey: "assistant.readerNames") ?? "Felix, Weifeng"
         if let note = d.string(forKey: "assistant.note") {
             self.note = note
         } else {

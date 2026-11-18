@@ -631,3 +631,36 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(Transcript(snapshot: t.snapshot).mode == .interview)
     }
 }
+
+@Suite struct MeetingTests {
+    @Test func readerNamesAreFound() {
+        let names = ReaderNames.parse("Felix, Weifeng，刘")
+        #expect(names == ["Felix", "Weifeng", "刘"])
+        #expect(ReaderNames.mentions("Felix, can you size it?", names: names))
+        #expect(ReaderNames.mentions("thanks felix", names: names))
+        #expect(!ReaderNames.mentions("Felixstowe office", names: names))
+        #expect(ReaderNames.mentions("问一下刘老师", names: names))
+        #expect(ReaderNames.promptLine(names).contains("[Action → me]"))
+        #expect(ReaderNames.promptLine([]).isEmpty)
+    }
+
+    @Test @MainActor func forMeCollectsMentionsAndMyActions() {
+        let t = Transcript()
+        t.beginStream(channel: .them)
+        t.ingest(tokens([("Felix, can you size the churn impact by Friday?", true, "original"), ("<end>", true, nil)], speaker: "1"), channel: .them)
+        t.ingest(tokens([("Sure, I'll do it.", true, "original"), ("<end>", true, nil)]), channel: .me)
+        t.summary = LiveSummary(text: "## Backlog\n- [Decision] Pause onboarding test\n- [Action → me] Churn-impact estimate, Fri", updatedAt: .now, coveredLineID: 0)
+        let items = t.forMe(names: ["Felix"])
+        #expect(items.count == 2)
+        #expect(items[0].kind == .mention && items[0].text.hasPrefix("Felix, can you"))
+        #expect(items[1].kind == .action && items[1].text == "Churn-impact estimate, Fri")
+    }
+
+    @Test func meetingPromptsTagAndAnswerQuestionsForMe() {
+        #expect(SummaryPrompt.system(language: OutputLanguage("English"), mode: .meeting).contains("[Action → owner]"))
+        let a = AnswerPrompt.system(language: OutputLanguage("English"), mode: .meeting)
+        #expect(a.contains("TYPE: for-me") && a.contains("① my position"))
+        #expect(AnswerPrompt.parse("SOURCE: model\nTYPE: for-me\n① We should wait")?.kind == "for-me")
+        #expect(CatchUpPrompt.system(language: OutputLanguage("English")).contains("Now: "))
+    }
+}

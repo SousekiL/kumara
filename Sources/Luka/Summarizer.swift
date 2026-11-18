@@ -18,6 +18,9 @@ final class Summarizer {
 
     private(set) var working = false
     private(set) var lastError: String?
+    /// The latest "catch me up", until dismissed.
+    private(set) var recap: (session: UUID, text: String, at: Date)?
+    private(set) var recapping = false
 
     @ObservationIgnored private var lastAttempt = Date.distantPast
 
@@ -85,7 +88,7 @@ final class Summarizer {
                 : SummaryPrompt.append(current: t.summary, newTranscript: new.text)
             lastID = new.lastLineID
         }
-        let system = SummaryPrompt.system(language: language, detail: detail, mode: mode, extra: service.note)
+        let system = SummaryPrompt.system(language: language, detail: detail, mode: mode, extra: service.context)
         // An overview comes back whole each time, so it replaces what was there.
         let whole = rewrite || mode.rewritesSummary
         guard let request = service.request(system: system, user: user, maxTokens: rewrite ? 10_000 : whole ? 6_000 : 4_000) else {
@@ -111,4 +114,28 @@ final class Summarizer {
             }
         }
     }
+
+    // MARK: Catch me up
+
+    /// What was just said, in a few bullets: one request, made only when asked.
+    func catchMeUp(_ t: Transcript, language: OutputLanguage, name: @escaping (SpeakerID) -> String) {
+        guard service.isConfigured, !recapping, !t.lines.isEmpty else { return }
+        // About the last few minutes of talk.
+        let recent = t.summaryText(after: nil, closedOnly: false, limit: 3_000, name: name).text
+        guard let request = service.request(system: CatchUpPrompt.system(language: language, extra: service.context),
+                                            user: CatchUpPrompt.user(conversation: recent), maxTokens: 3_000) else { return }
+        recapping = true
+        Task {
+            defer { recapping = false }
+            do {
+                let text = try await service.send(request)
+                recap = (session: t.id, text: text, at: Date.now)
+                lastError = nil
+            } catch {
+                lastError = error.localizedDescription
+            }
+        }
+    }
+
+    func dismissRecap() { recap = nil }
 }

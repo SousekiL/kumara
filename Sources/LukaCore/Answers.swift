@@ -220,7 +220,7 @@ public enum AnswerPrompt {
         return out
     }
 
-    static let kinds: Set<String> = ["technical", "case", "behavioral", "experience", "motivation", "reverse"]
+    static let kinds: Set<String> = ["technical", "case", "behavioral", "experience", "motivation", "reverse", "for-me"]
 
     /// What can be shown of a reply still coming in: nil while it is only header lines,
     /// or could still turn out to be SKIP.
