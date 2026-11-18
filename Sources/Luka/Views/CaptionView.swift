@@ -536,6 +536,8 @@ struct CaptionBackground: ViewModifier {
         if model.captionStyle == .dark {
             content
                 .background(Color.black.opacity(model.captionBackgroundOpacity), in: .rect(cornerRadius: cornerRadius))
+                // The same faint edge as the floating card, so the two read as one set.
+                .overlay { RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(.white.opacity(0.08)) }
         } else {
             content
                 .lukaGlass(model.captionStyle.glass, in: .rect(cornerRadius: cornerRadius))

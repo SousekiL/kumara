@@ -10,6 +10,25 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
     /// An interview in which the reader is the one being interviewed.
     case interview
 
+    /// What choosing a mode turns on and off. Each stays a separate switch afterwards.
+    public struct Scene: Equatable, Sendable {
+        public var summary: Bool
+        public var answers: Bool
+        /// Me / Them: the microphone is the reader, Mac audio everyone else, numbered.
+        public var separatesSpeakers: Bool
+        public var pinsQuestions: Bool
+        /// Polish my answers; nil leaves it as it is.
+        public var polishes: Bool?
+    }
+
+    public var scene: Scene {
+        switch self {
+        case .lecture: Scene(summary: false, answers: false, separatesSpeakers: false, pinsQuestions: false, polishes: nil)
+        case .meeting: Scene(summary: true, answers: false, separatesSpeakers: true, pinsQuestions: false, polishes: nil)
+        case .interview: Scene(summary: false, answers: true, separatesSpeakers: true, pinsQuestions: true, polishes: true)
+        }
+    }
+
     /// A lecture gets one structured summary, rewritten as it goes; the others get running notes.
     public var rewritesSummary: Bool { self == .lecture }
 

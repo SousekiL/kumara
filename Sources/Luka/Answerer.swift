@@ -2,7 +2,7 @@ import AppKit
 import LukaCore
 import PDFKit
 
-/// Answers questions heard in the conversation, with the summary's model and key, drawing first
+/// Answers questions heard in the conversation, with the assistant's model, drawing first
 /// on the user's knowledge base: files and folders read where they are on disk, plus their own notes.
 @MainActor
 @Observable
@@ -17,7 +17,20 @@ final class Answerer {
         var name: String { URL(fileURLWithPath: path).lastPathComponent }
     }
 
+    /// A reply still coming in, shown as it is written.
+    struct Live: Equatable {
+        /// The line the question was asked in.
+        let id: Int
+        let question: String
+        let polish: Bool
+        /// What can be shown so far; nil until the model is past its header lines.
+        var text: String?
+        var fromKnowledge = false
+        var kind: String?
+    }
+
     private let defaults = UserDefaults.standard
+    let service: AssistantService
 
     var enabled: Bool {
         didSet {
@@ -29,7 +42,6 @@ final class Answerer {
         }
     }
     @ObservationIgnored var onEnabledChange: () -> Void = {}
-    var instructions: String { didSet { defaults.set(instructions, forKey: "answers.instructions") } }
     /// The job being interviewed for, which tells Interview mode what counts as a technical question.
     var role: String { didSet { defaults.set(role, forKey: "answers.role") } }
     /// In Interview mode with Me / Them: a smoother version of each of my answers, and quick fixes.
@@ -50,18 +62,20 @@ final class Answerer {
     private(set) var knowledgeCharacters = 0
     private(set) var working = false
     private(set) var lastError: String?
+    /// The answer or polish being written right now.
+    private(set) var live: Live?
 
-    /// Called when an answer has been added.
+    /// Called when an answer starts to show, and again when it is filed.
     @ObservationIgnored var onAnswer: () -> Void = {}
     @ObservationIgnored private var knowledge = KnowledgeBase()
     @ObservationIgnored private var handled: Set<Int> = []
     @ObservationIgnored private var sessionID: UUID?
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
 
-    init() {
+    init(service: AssistantService) {
+        self.service = service
         let d = UserDefaults.standard
         enabled = d.bool(forKey: "answers.enabled")
-        instructions = d.string(forKey: "answers.instructions") ?? ""
         role = d.string(forKey: "answers.role") ?? "Data Scientist"
         polishes = d.object(forKey: "answers.polish") as? Bool ?? true
         notes = d.string(forKey: "answers.notes") ?? ""
@@ -124,17 +138,16 @@ final class Answerer {
     // MARK: Answering
 
     /// Called every second while listening: answers the newest question that just finished.
-    func tick(_ t: Transcript, summarizer: Summarizer, language: OutputLanguage, channelsOnly: Bool, name: (SpeakerID) -> String) {
-        guard enabled, summarizer.isConfigured else { return }
+    func tick(_ t: Transcript, mode: AssistantMode, language: OutputLanguage, channelsOnly: Bool, name: (SpeakerID) -> String) {
+        guard enabled, service.isConfigured else { return }
         if sessionID != t.id {
             sessionID = t.id
             handled = Set(t.lines.map(\.id))
         }
-        let mode = summarizer.mode
         guard !working else { return }
         guard let waiting = t.waitingQuestion(handled: handled, channelsOnly: channelsOnly, eagerness: mode.eagerness) else {
             // Questions come first; with none waiting, look at the answer I just gave.
-            if polishes, mode == .interview, channelsOnly { polish(t, summarizer: summarizer, language: language) }
+            if polishes, mode == .interview, channelsOnly { polish(t, language: language) }
             return
         }
         handled.formUnion(waiting.all)
@@ -144,56 +157,63 @@ final class Answerer {
         let user = AnswerPrompt.user(question: line.original, asker: line.speaker.map(name) ?? "someone",
                                      conversation: conversation, knowledge: knowledge.excerpts(for: line.original),
                                      previous: previous)
-        let endpoint = summarizer.endpoint
-        guard let request = endpoint.request(apiKey: summarizer.apiKey,
-                                             system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: instructions),
-                                             user: user, maxTokens: 4_000) else { return }
-        working = true
-        Task {
-            defer { working = false }
-            do {
-                let reply = try await Summarizer.send(request, endpoint: endpoint)
-                lastError = nil
-                guard let answer = AnswerPrompt.parse(reply) else { return }
-                t.answers.append(QuestionAnswer(id: line.id, question: line.original, answer: answer.text,
-                                                fromKnowledge: answer.fromKnowledge, createdAt: .now, kind: answer.kind))
-                onAnswer()
-            } catch SummaryEndpoint.ResponseError.empty {
-                // An empty reply is the model having nothing to add, not a failure.
-                lastError = nil
-            } catch {
-                lastError = error.localizedDescription
-                AudioLog.write("answer failed: \(error.localizedDescription)")
-            }
-        }
+        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.note),
+                                            user: user, maxTokens: 4_000, stream: true) else { return }
+        write(request, into: t, live: Live(id: line.id, question: line.original, polish: false))
     }
 
     /// A smoother way to say the answer I just finished, and quick fixes. Interview mode with Me / Them only.
-    private func polish(_ t: Transcript, summarizer: Summarizer, language: OutputLanguage) {
-        guard let answer = t.finishedAnswer(handled: handled) else { return }
+    private func polish(_ t: Transcript, language: OutputLanguage) {
+        guard let answer = t.finishedAnswer(handled: handled), let id = answer.ids.last else { return }
         handled.formUnion(answer.ids)
-        let endpoint = summarizer.endpoint
         let user = PolishPrompt.user(question: answer.question, answer: answer.text,
                                      knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
-        guard let request = endpoint.request(apiKey: summarizer.apiKey,
-                                             system: PolishPrompt.system(language: language, role: role, extra: instructions),
-                                             user: user, maxTokens: 3_000) else { return }
+        guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.note),
+                                            user: user, maxTokens: 3_000, stream: true) else { return }
+        write(request, into: t, live: Live(id: id, question: answer.text, polish: true))
+    }
+
+    /// Streams the reply into `live` as it is written, then files it with the session's answers.
+    private func write(_ request: URLRequest, into t: Transcript, live start: Live) {
         working = true
+        live = start
         Task {
-            defer { working = false }
+            defer {
+                working = false
+                live = nil
+            }
             do {
-                let reply = try await Summarizer.send(request, endpoint: endpoint)
+                let reply = try await service.stream(request) { [weak self] text in
+                    guard let self, self.live?.id == start.id else { return }
+                    let first = self.live?.text == nil
+                    defer { if first, self.live?.text != nil { self.onAnswer() } }
+                    if start.polish {
+                        self.live?.text = PolishPrompt.partial(text)
+                    } else if let shown = AnswerPrompt.partial(text) {
+                        self.live?.text = shown.text
+                        self.live?.fromKnowledge = shown.fromKnowledge
+                        self.live?.kind = shown.kind
+                    }
+                }
                 lastError = nil
-                guard let text = PolishPrompt.parse(reply), let id = answer.ids.last else { return }
-                t.answers.append(QuestionAnswer(id: id, question: answer.text, answer: text,
-                                                fromKnowledge: false, createdAt: .now, kind: "polish"))
+                let item: QuestionAnswer
+                if start.polish {
+                    guard let text = PolishPrompt.parse(reply) else { return }
+                    item = QuestionAnswer(id: start.id, question: start.question, answer: text,
+                                          fromKnowledge: false, createdAt: .now, kind: "polish")
+                } else {
+                    guard let answer = AnswerPrompt.parse(reply) else { return }
+                    item = QuestionAnswer(id: start.id, question: start.question, answer: answer.text,
+                                          fromKnowledge: answer.fromKnowledge, createdAt: .now, kind: answer.kind)
+                }
+                t.answers.append(item)
                 onAnswer()
             } catch SummaryEndpoint.ResponseError.empty {
                 // An empty reply is the model having nothing to add, not a failure.
                 lastError = nil
             } catch {
                 lastError = error.localizedDescription
-                AudioLog.write("polish failed: \(error.localizedDescription)")
+                AudioLog.write("\(start.polish ? "polish" : "answer") failed: \(error.localizedDescription)")
             }
         }
     }

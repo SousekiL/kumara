@@ -226,18 +226,29 @@ struct MenuBarContent: View {
             Text(tr("Soniox balance") + String(format: ": $%.2f", balance.availableUSD))
         }
         Divider()
-        Toggle(tr("Captions"), isOn: Binding(get: { model.captionsVisible }, set: { model.setCaptions($0) }))
-        Toggle(tr("Lock Captions"), isOn: Binding(get: { model.locked }, set: { model.lock($0) }))
-        Toggle(tr("Floating Button"), isOn: $model.showsDockButton)
-        Button(tr("Show Transcript")) { model.openTranscript() }
-        Button(tr("Shared Captions Window")) {
-            NSApp.activate()
-            openWindow(id: "presenter")
+        // The mode sets the scene: summary, answers, Me / Them and the pinned question.
+        Picker(tr("Mode"), selection: $model.assistantMode) {
+            ForEach(AssistantMode.allCases, id: \.self) { Label($0.title, systemImage: $0.symbol).tag($0) }
+        }
+        SourcePicker()
+        Menu(tr("Helpers")) {
+            Toggle(tr("Summarize while listening"), isOn: Binding(get: { model.summarizer.enabled }, set: { model.summarizer.enabled = $0 }))
+            Toggle(tr("Answer questions as they’re asked"), isOn: Binding(get: { model.answerer.enabled }, set: { model.answerer.enabled = $0 }))
+            Toggle(tr("Label Me and Them by source"), isOn: $model.separatesSpeakers)
+            Toggle(tr("Pin the latest question"), isOn: $model.pinsQuestions)
         }
         Divider()
-        SourcePicker()
-        Toggle(tr("Label Me and Them by source"), isOn: $model.separatesSpeakers)
-        Toggle(tr("Pin the latest question"), isOn: $model.pinsQuestions)
+        Menu(tr("Windows")) {
+            Toggle(tr("Captions"), isOn: Binding(get: { model.captionsVisible }, set: { model.setCaptions($0) }))
+            Toggle(tr("Lock Captions"), isOn: Binding(get: { model.locked }, set: { model.lock($0) }))
+            Toggle(tr("Floating Button"), isOn: $model.showsDockButton)
+            Divider()
+            Button(tr("Show Transcript")) { model.openTranscript() }
+            Button(tr("Shared Captions Window")) {
+                NSApp.activate()
+                openWindow(id: "presenter")
+            }
+        }
         Divider()
         Button(tr("Settings…")) {
             NSApp.activate()

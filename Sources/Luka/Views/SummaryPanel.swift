@@ -16,30 +16,22 @@ struct SummaryPanel: View {
     var body: some View {
         @Bindable var answerer = model.answerer
         @Bindable var summarizer = model.summarizer
+        let mode = model.assistantMode
         let unseen = max(0, transcript.answers.count - seenAnswers)
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Picker("", selection: $answerer.panelShowsAnswers) {
-                    Text(tr("Summary")).tag(false)
-                    // A fixed-width label: a count that comes and goes would resize the whole header.
-                    Text(unseen > 0 ? tr("Answers") + " •" : tr("Answers")).tag(true)
+            HStack(alignment: .center, spacing: 14) {
+                PanelTab(title: tr("Summary"), selected: !answerer.panelShowsAnswers, badge: false) {
+                    answerer.panelShowsAnswers = false
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 220)
+                PanelTab(title: tr("Answers"), selected: answerer.panelShowsAnswers, badge: unseen > 0 || answerer.live?.text != nil) {
+                    answerer.panelShowsAnswers = true
+                }
                 Spacer(minLength: 4)
-                // The kind of conversation: how the summary is kept, how readily questions are answered.
-                Picker("", selection: $summarizer.mode) {
-                    ForEach(AssistantMode.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .fixedSize()
-                .help(summarizer.mode.explanation)
+                // The kind of conversation: choosing one sets which helpers are on.
+                ModeChip()
             }
             .padding(.horizontal, Self.inset)
-            .padding(.top, 10)
-            .padding(.bottom, 2)
+            .frame(height: 40)
             if answerer.panelShowsAnswers {
                 bar { answersStatus } actions: {
                     ProgressView().controlSize(.small).opacity(answerer.working ? 1 : 0)
@@ -60,7 +52,7 @@ struct SummaryPanel: View {
                     ProgressView().controlSize(.small).opacity(summarizer.working ? 1 : 0)
                     Button { model.refreshSummary(transcript) } label: { Image(systemName: "arrow.clockwise") }
                         .help(tr("Write the notes again from the whole transcript"))
-                        .disabled(!summarizer.isConfigured || summarizer.working || transcript.lines.isEmpty)
+                        .disabled(!model.assistant.isConfigured || summarizer.working || transcript.lines.isEmpty)
                     Button { copy(transcript.summary?.text, notice: tr("Copied summary")) } label: { Image(systemName: "doc.on.doc") }
                         .help(tr("Copy Summary"))
                         .disabled(transcript.summary == nil)
@@ -76,7 +68,7 @@ struct SummaryPanel: View {
                         .padding(.vertical, 14)
                 }
                 // Opening a session shows where the notes end; an overview reads from the top.
-                .defaultScrollAnchor(summarizer.mode.rewritesSummary ? .top : .bottom, for: .initialOffset)
+                .defaultScrollAnchor(mode.rewritesSummary ? .top : .bottom, for: .initialOffset)
                 // Notes grow at the bottom: follow them, like the transcript, unless the reader has scrolled up.
                 .scrollPosition($notesPosition)
                 .onScrollGeometryChange(for: Bool.self) { geo in
@@ -86,7 +78,7 @@ struct SummaryPanel: View {
                 }
                 .onChange(of: transcript.summary?.text) {
                     // An overview is rewritten whole, so there is no bottom to follow.
-                    guard followingNotes, !summarizer.mode.rewritesSummary else { return }
+                    guard followingNotes, !mode.rewritesSummary else { return }
                     notesPosition.scrollTo(edge: .bottom)
                 }
             }
@@ -142,7 +134,7 @@ struct SummaryPanel: View {
             }
         } else if !summarizer.enabled {
             Text(tr("Off"))
-        } else if summarizer.isConfigured {
+        } else if model.assistant.isConfigured {
             Text(tr("Listening for the first few sentences…"))
         } else {
             Text(tr("No model set"))
@@ -151,11 +143,11 @@ struct SummaryPanel: View {
 
     @ViewBuilder private var summary: some View {
         if let summary = transcript.summary {
-            VStack(alignment: .leading, spacing: summarizer.fontSize * 0.9) {
+            VStack(alignment: .leading, spacing: model.assistant.fontSize * 0.9) {
                 if let context = summary.context, !context.isEmpty {
                     Text(context)
-                        .font(LukaFont.font(model.fontFamily, size: max(11, summarizer.fontSize - 1)))
-                        .lineSpacing(summarizer.fontSize * 0.25)
+                        .font(LukaFont.font(model.fontFamily, size: max(11, model.assistant.fontSize - 1)))
+                        .lineSpacing(model.assistant.fontSize * 0.25)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.vertical, 8)
@@ -164,10 +156,10 @@ struct SummaryPanel: View {
                         .background(.quaternary.opacity(0.45), in: .rect(cornerRadius: 8))
                 }
                 // While listening, the lines just added stand out and the rest steps back.
-                SummaryText(markdown: summary.text, fontSize: summarizer.fontSize, family: model.fontFamily,
+                SummaryText(markdown: summary.text, fontSize: model.assistant.fontSize, family: model.fontFamily,
                             freshFrom: model.isLive(transcript) && model.isListening ? summary.freshLine : nil)
             }
-        } else if !summarizer.isConfigured {
+        } else if !model.assistant.isConfigured {
             setupHint(tr("Pick a model for the summary in Settings › Assistant."))
         } else if !summarizer.enabled {
             Text(tr("The summary is off. Turn it on with the switch above."))
@@ -189,9 +181,9 @@ struct SummaryPanel: View {
             Text(tr("Answering…"))
         } else if !answerer.enabled {
             Text(tr("Off"))
-        } else if summarizer.mode == .lecture {
+        } else if model.assistantMode == .lecture {
             Text(tr("Not answering in Lecture mode"))
-        } else if summarizer.isConfigured {
+        } else if model.assistant.isConfigured {
             Text(answerer.knowledgeCharacters > 0 ? tr("Using your knowledge base") : tr("No knowledge base; the model answers on its own"))
         } else {
             Text(tr("No model set"))
@@ -200,7 +192,7 @@ struct SummaryPanel: View {
 
     /// Without Me / Them, nothing tells the interviewer's questions from the reader's own for certain.
     @ViewBuilder private var channelHint: some View {
-        if answerer.enabled, summarizer.mode == .interview, !model.splitsBySource {
+        if answerer.enabled, model.assistantMode == .interview, !model.splitsBySource {
             VStack(alignment: .leading, spacing: 6) {
                 Text(tr("To answer only the interviewer’s questions and never your own, Luka needs to hear you and them separately."))
                 Button(tr("Turn On Me / Them")) { model.separatesSpeakers = true }
@@ -217,19 +209,26 @@ struct SummaryPanel: View {
 
     @ViewBuilder private var answers: some View {
         channelHint
-        if !transcript.answers.isEmpty {
+        let rows = answerRows
+        if !rows.isEmpty {
             // Newest first and at full strength; earlier ones step back.
-            let newest = transcript.answers.last?.id
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(transcript.answers.reversed()) { item in
-                    AnswerCard(item: item, fontSize: summarizer.fontSize, family: model.fontFamily) {
-                        copy(item.answer, notice: tr("Copied answer"))
+            let newest = rows.first?.id
+            VStack(alignment: .leading, spacing: 18) {
+                ForEach(rows) { row in
+                    VStack(alignment: .leading, spacing: 18) {
+                        AnswerCard(row: row, fontSize: model.assistant.fontSize, family: model.fontFamily,
+                                   askerColor: row.polish ? .secondary : model.speakerColor(asker(of: row.id), in: transcript)) {
+                            copy(row.answer, notice: tr("Copied answer"))
+                        }
+                        .opacity(row.id == newest ? 1 : 0.7)
+                        if row.id != rows.last?.id { Divider().opacity(0.6) }
                     }
-                    .opacity(item.id == newest ? 1 : 0.7)
-                    if item.id != transcript.answers.first?.id { Divider() }
+                    // A new card slides in from the top; one being written becomes the finished card in place.
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))
                 }
             }
-        } else if !summarizer.isConfigured {
+            .animation(.smooth(duration: 0.25), value: rows.map(\.id))
+        } else if !model.assistant.isConfigured {
             setupHint(tr("Pick a model for the answers in Settings › Assistant."))
         } else if !answerer.enabled {
             Text(tr("Answers are off. Turn them on with the switch above."))
@@ -240,6 +239,19 @@ struct SummaryPanel: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// The session's answers, newest first, led by the one being written.
+    private var answerRows: [AnswerRow] {
+        var rows = transcript.answers.reversed().map(AnswerRow.init)
+        if let live = answerer.live, model.isLive(transcript), !rows.contains(where: { $0.id == live.id }) {
+            rows.insert(AnswerRow(live), at: 0)
+        }
+        return rows
+    }
+
+    private func asker(of lineID: Int) -> SpeakerID? {
+        transcript.lines.last(where: { $0.id == lineID })?.speaker
     }
 
     static func ago(_ date: Date, now: Date) -> String {
@@ -320,50 +332,263 @@ struct SummaryText: View {
     }
 }
 
-/// One question and its answer.
+/// What an answer card shows: a filed answer, or one still being written.
+struct AnswerRow: Identifiable {
+    let id: Int
+    let question: String
+    let answer: String?
+    let kind: String?
+    let fromKnowledge: Bool
+    let polish: Bool
+    let createdAt: Date?
+
+    init(_ item: QuestionAnswer) {
+        id = item.id
+        question = item.question
+        answer = item.answer
+        kind = item.kind == "polish" ? nil : item.kind
+        fromKnowledge = item.fromKnowledge
+        polish = item.kind == "polish"
+        createdAt = item.createdAt
+    }
+
+    init(_ live: Answerer.Live) {
+        id = live.id
+        question = live.question
+        answer = live.text
+        kind = live.kind
+        fromKnowledge = live.fromKnowledge
+        polish = live.polish
+        createdAt = nil
+    }
+
+    var streaming: Bool { createdAt == nil }
+}
+
+/// One question and its answer: the question small, the gist to say first, then points to make,
+/// with the words to borrow in the accent color so they can be found at a glance.
 private struct AnswerCard: View {
-    let item: QuestionAnswer
+    let row: AnswerRow
     let fontSize: Double
     let family: String
+    let askerColor: Color
     let copy: () -> Void
     @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: fontSize * 0.55) {
-            // For a polish, the question line is what I said; show its start, not its last sentence.
-            Text(item.kind == "polish" ? tr("You said") + ": " + item.question : Questions.lastSentence(item.question) ?? item.question)
-                .font(LukaFont.font(family, size: max(11, fontSize - 1), weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineSpacing(fontSize * 0.2)
-                .lineLimit(item.kind == "polish" ? 2 : 3)
-                .fixedSize(horizontal: false, vertical: true)
-                .help(item.question)
-            SummaryText(markdown: item.answer, fontSize: fontSize, family: family)
-            HStack(spacing: 6) {
-                if let kind = item.kind {
-                    Text(QuestionKind.title(kind))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(.quaternary, in: .capsule)
-                }
-                if item.kind != "polish" {
-                    Label(item.fromKnowledge ? tr("From your knowledge base") : tr("Model’s own knowledge"),
-                          systemImage: item.fromKnowledge ? "books.vertical" : "sparkles")
-                    Text(verbatim: "·")
-                }
-                Text(item.createdAt.formatted(date: .omitted, time: .shortened))
-                Spacer()
-                Button(action: copy) { Image(systemName: "doc.on.doc") }
-                    .buttonStyle(.borderless)
-                    .help(tr("Copy Answer"))
-                    .opacity(hovering ? 1 : 0)
+        VStack(alignment: .leading, spacing: fontSize * 0.6) {
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                Circle().fill(askerColor).frame(width: 6, height: 6)
+                // For a polish, the question line is what I said; show its start, not its last sentence.
+                Text(row.polish ? tr("You said") + ": " + row.question : Questions.lastSentence(row.question) ?? row.question)
+                    .font(LukaFont.font(family, size: max(11, fontSize - 2)))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(fontSize * 0.15)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(row.question)
             }
-            .font(.caption)
-            .foregroundStyle(.tertiary)
-            .padding(.top, 2)
+            if let answer = row.answer {
+                AnswerText(markdown: answer, fontSize: fontSize, family: family)
+            } else {
+                // Not past the model's header yet: it may still decide this needs no answer.
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text(tr("Thinking…"))
+                }
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            }
+            footer
         }
         .contentShape(.rect)
         .onHover { hovering = $0 }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 6) {
+            if row.polish {
+                KindTag(kind: "polish")
+            } else if let kind = row.kind {
+                KindTag(kind: kind)
+            }
+            if row.answer != nil, !row.polish {
+                Label(row.fromKnowledge ? tr("From your knowledge base") : tr("Model’s own knowledge"),
+                      systemImage: row.fromKnowledge ? "books.vertical" : "sparkles")
+            }
+            if let date = row.createdAt {
+                Text(verbatim: "·")
+                Text(date.formatted(date: .omitted, time: .shortened))
+            } else if row.answer != nil {
+                ProgressView().controlSize(.mini)
+            }
+            Spacer()
+            Button(action: copy) { Image(systemName: "doc.on.doc") }
+                .buttonStyle(.borderless)
+                .help(tr("Copy Answer"))
+                .opacity(hovering && !row.streaming ? 1 : 0)
+        }
+        .font(.caption)
+        .foregroundStyle(.tertiary)
+        .padding(.top, 2)
+    }
+}
+
+/// An answer's text. The first plain line is the gist and reads larger; quoted words
+/// (the phrases to say) take the accent color.
+struct AnswerText: View {
+    let markdown: String
+    let fontSize: Double
+    let family: String
+    /// The Chinese font, so a change redraws the text.
+    var cjk: String = LukaFont.cjkFamily
+
+    private enum Kind { case gist, bullet, text }
+
+    private var lines: [(kind: Kind, text: String)] {
+        var sawGist = false
+        return markdown.split(separator: "\n", omittingEmptySubsequences: true).map { raw in
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("#") { line = String(line.drop(while: { $0 == "#" })).trimmingCharacters(in: .whitespaces) }
+            for marker in ["- ", "* ", "• "] where line.hasPrefix(marker) {
+                sawGist = true
+                return (.bullet, String(line.dropFirst(marker.count)))
+            }
+            if !sawGist {
+                sawGist = true
+                return (.gist, line)
+            }
+            return (.text, line)
+        }
+    }
+
+    var body: some View {
+        let lines = lines
+        VStack(alignment: .leading, spacing: fontSize * 0.5) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                Group {
+                    switch line.kind {
+                    case .gist:
+                        Text(Self.styled(line.text))
+                            .font(LukaFont.font(family, size: fontSize + 1, weight: .semibold))
+                            .lineSpacing(fontSize * 0.3)
+                    case .bullet:
+                        // A hanging indent: wrapped lines line up with the text, not the dot.
+                        HStack(alignment: .firstTextBaseline, spacing: 0) {
+                            Text(verbatim: "•")
+                                .foregroundStyle(.tertiary)
+                                .frame(width: fontSize * 0.95, alignment: .leading)
+                            Text(Self.styled(line.text))
+                                .lineSpacing(fontSize * 0.35)
+                        }
+                        .font(LukaFont.font(family, size: fontSize))
+                    case .text:
+                        Text(Self.styled(line.text))
+                            .font(LukaFont.font(family, size: fontSize))
+                            .lineSpacing(fontSize * 0.35)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .textSelection(.enabled)
+    }
+
+    /// Inline Markdown, with text in quotes in the accent color.
+    static func styled(_ s: String) -> AttributedString {
+        var text = (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+        let pairs: [(open: Character, close: Character)] = [("\"", "\""), ("“", "”"), ("「", "」")]
+        let chars = Array(text.characters)
+        var i = 0
+        while i < chars.count {
+            if let pair = pairs.first(where: { $0.open == chars[i] }),
+               i + 1 < chars.count,
+               let close = chars[(i + 1)...].firstIndex(of: pair.close) {
+                let lower = text.characters.index(text.startIndex, offsetBy: i)
+                let upper = text.characters.index(text.startIndex, offsetBy: close + 1)
+                text[lower..<upper].foregroundColor = Color.accentColor
+                i = close + 1
+            } else {
+                i += 1
+            }
+        }
+        return text
+    }
+}
+
+/// A question's kind, as a small colored tag.
+private struct KindTag: View {
+    let kind: String
+
+    var body: some View {
+        let color = QuestionKind.color(kind)
+        Text(QuestionKind.title(kind))
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1.5)
+            .background(color.opacity(0.16), in: .capsule)
+    }
+}
+
+/// A tab in the column's header: plain text, underlined when chosen.
+private struct PanelTab: View {
+    let title: String
+    let selected: Bool
+    let badge: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title)
+                    // Both weights take the same room, so choosing a tab never shifts the header.
+                    .fontWeight(.semibold).opacity(0)
+                    .overlay { Text(title).fontWeight(selected ? .semibold : .regular) }
+                // Always there, so the label never changes width.
+                Circle().fill(Color.accentColor).frame(width: 5, height: 5).opacity(badge && !selected ? 1 : 0)
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(selected ? .primary : .secondary)
+            .padding(.vertical, 6)
+            .overlay(alignment: .bottom) {
+                Capsule().fill(Color.accentColor).frame(height: 2).padding(.trailing, 9).opacity(selected ? 1 : 0).offset(y: 3)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The mode, as a small menu in the header.
+private struct ModeChip: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Menu {
+            Picker("", selection: $model.assistantMode) {
+                ForEach(AssistantMode.allCases, id: \.self) { Label($0.title, systemImage: $0.symbol).tag($0) }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: model.assistantMode.symbol)
+                Text(model.assistantMode.title)
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
+            }
+            .font(.system(size: 12, weight: .medium))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(.primary.opacity(0.08), in: .capsule)
+            .contentShape(.capsule)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(model.assistantMode.explanation)
     }
 }
 
@@ -386,9 +611,9 @@ extension AssistantMode {
 
     var explanation: String {
         switch self {
-        case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers. Starts with the summary and answers off.")
-        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer. Starts with the summary on and answers off.")
-        case .interview: tr("Interviews: interview questions for your role answered in the first person, and your own answers polished; running notes of each question if you turn the summary on. Starts with answers on, the summary off, and Me / Them.")
+        case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers. Turns the summary, answers and Me / Them off; turn the summary on for an overview.")
+        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer. Turns on the summary and Me / Them, with each other person numbered; answers off.")
+        case .interview: tr("Interviews: interview questions for your role answered in the first person, and your own answers polished; running notes of each question if you turn the summary on. Turns on answers, Me / Them, the pinned question and polishing; the summary off.")
         }
     }
 }
@@ -404,6 +629,18 @@ enum QuestionKind {
         case "reverse": tr("Your questions")
         case "polish": tr("Polish")
         default: kind
+        }
+    }
+
+    static func color(_ kind: String) -> Color {
+        switch kind {
+        case "technical": .blue
+        case "case": .purple
+        case "behavioral": .orange
+        case "experience": .green
+        case "motivation": .pink
+        case "polish": .teal
+        default: .gray
         }
     }
 }

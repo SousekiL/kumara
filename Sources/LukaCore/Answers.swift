@@ -196,6 +196,28 @@ public enum AnswerPrompt {
 
     static let kinds: Set<String> = ["technical", "case", "behavioral", "experience", "motivation", "reverse"]
 
+    /// What can be shown of a reply still coming in: nil while it is only header lines,
+    /// or could still turn out to be SKIP.
+    public static func partial(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?)? {
+        var lines = reply.split(separator: "\n", omittingEmptySubsequences: false)
+        // A header line still being written isn't text to show.
+        if !reply.hasSuffix("\n"), let last = lines.last {
+            let upper = last.trimmingCharacters(in: .whitespaces).uppercased()
+            if upper.isEmpty || "SOURCE:".hasPrefix(upper) || "TYPE:".hasPrefix(upper)
+                || upper.hasPrefix("SOURCE:") || upper.hasPrefix("TYPE:") {
+                lines.removeLast()
+            }
+        }
+        guard let parsed = parse(lines.joined(separator: "\n")) else { return nil }
+        return Self.maySkip(parsed.text) ? nil : parsed
+    }
+
+    /// Whether text so far could still be the start of SKIP.
+    static func maySkip(_ text: String) -> Bool {
+        let bare = text.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return bare.count < 4 && "SKIP".hasPrefix(bare)
+    }
+
     /// The answer, where it came from and its kind, or nil when the model declined to answer.
     public static func parse(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?)? {
         var fromKnowledge = false

@@ -493,3 +493,54 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(plain.contains("Write in English.") && !plain.contains("to borrow"))
     }
 }
+
+@Suite struct StreamingTests {
+    let openAI = SummaryEndpoint(provider: .openAI, baseURL: "", model: "m")
+    let claude = SummaryEndpoint(provider: .anthropic, baseURL: "", model: "m")
+
+    @Test func requestAsksForAStream() throws {
+        let r = try #require(claude.request(apiKey: "k", system: "s", user: "u", stream: true))
+        let body = try #require(JSONSerialization.jsonObject(with: r.httpBody!) as? [String: Any])
+        #expect(body["stream"] as? Bool == true)
+        let plain = try #require(openAI.request(apiKey: "k", system: "s", user: "u"))
+        let plainBody = try #require(JSONSerialization.jsonObject(with: plain.httpBody!) as? [String: Any])
+        #expect(plainBody["stream"] == nil)
+    }
+
+    @Test func readsOpenAIEvents() {
+        #expect(openAI.streamChunk(#"data: {"choices":[{"delta":{"content":"Hi"}}]}"#) == .text("Hi"))
+        #expect(openAI.streamChunk(#"data: {"choices":[{"delta":{"reasoning_content":"hmm"}}]}"#) == nil)
+        #expect(openAI.streamChunk(#"data: {"choices":[{"delta":{},"finish_reason":"length"}]}"#) == .stop("length"))
+        #expect(openAI.streamChunk("data: [DONE]") == .done)
+        #expect(openAI.streamChunk(": keep-alive") == nil)
+    }
+
+    @Test func readsAnthropicEvents() {
+        #expect(claude.streamChunk("event: content_block_delta") == nil)
+        #expect(claude.streamChunk(#"data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"…"}}"#) == nil)
+        #expect(claude.streamChunk(#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"SOURCE"}}"#) == .text("SOURCE"))
+        #expect(claude.streamChunk(#"data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}"#) == .stop("max_tokens"))
+        #expect(claude.streamChunk(#"data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#) == .error("Overloaded"))
+        #expect(claude.streamChunk(#"data: {"type":"message_stop"}"#) == .done)
+        #expect(throws: SummaryEndpoint.ResponseError.api("The model returned no text (stopped: max_tokens).")) {
+            try claude.finish(streamed: "", stop: "max_tokens")
+        }
+    }
+
+    @Test func partialAnswerWaitsForText() {
+        #expect(AnswerPrompt.partial("SOUR") == nil)
+        #expect(AnswerPrompt.partial("SOURCE: knowledge\nTYPE: tech") == nil)
+        #expect(AnswerPrompt.partial("SOURCE: model\nSK") == nil)
+        let p = AnswerPrompt.partial("SOURCE: knowledge\nTYPE: technical\n先给结论")
+        #expect(p?.text == "先给结论" && p?.fromKnowledge == true && p?.kind == "technical")
+        #expect(PolishPrompt.partial("S") == nil)
+        #expect(PolishPrompt.partial("Smoother: I led") == "Smoother: I led")
+    }
+
+    @Test func modesSetTheScene() {
+        #expect(AssistantMode.interview.scene.answers && AssistantMode.interview.scene.separatesSpeakers && AssistantMode.interview.scene.pinsQuestions)
+        #expect(!AssistantMode.interview.scene.summary)
+        #expect(AssistantMode.meeting.scene.summary && AssistantMode.meeting.scene.separatesSpeakers && !AssistantMode.meeting.scene.answers)
+        #expect(!AssistantMode.lecture.scene.summary && !AssistantMode.lecture.scene.answers && AssistantMode.lecture.scene.polishes == nil)
+    }
+}

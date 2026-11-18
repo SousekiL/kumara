@@ -34,6 +34,12 @@ public enum PolishPrompt {
     }
 
     /// The feedback, or nil when the model skipped.
+    /// What can be shown of a reply still coming in; nil while it could still be SKIP.
+    public static func partial(_ reply: String) -> String? {
+        guard let text = parse(reply), !AnswerPrompt.maySkip(text) else { return nil }
+        return text
+    }
+
     public static func parse(_ reply: String) -> String? {
         let text = SummaryPrompt.clean(reply)
         let bare = text.trimmingCharacters(in: CharacterSet(charactersIn: " .。\n")).uppercased()

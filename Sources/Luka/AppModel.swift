@@ -33,10 +33,20 @@ final class AppModel {
     @ObservationIgnored var closeTranscript: () -> Void = {}
     @ObservationIgnored var openSettings: () -> Void = {}
     @ObservationIgnored let client = SonioxStreams()
-    /// The live summary, on its own model and key.
-    let summarizer = Summarizer()
-    /// Answers to questions heard, on the summary's model, from the knowledge base first.
-    let answerer = Answerer()
+    /// The model the summary and the answers share, and what else they share.
+    let assistant: AssistantService
+    /// The live summary.
+    let summarizer: Summarizer
+    /// Answers to questions heard, from the knowledge base first.
+    let answerer: Answerer
+    /// The kind of conversation. Choosing one sets the scene (see `AssistantMode.scene`);
+    /// each switch can still be changed by hand afterwards.
+    var assistantMode: AssistantMode {
+        didSet {
+            store(assistantMode.rawValue, "assistant.mode")
+            if assistantMode != oldValue { applyScene() }
+        }
+    }
     @ObservationIgnored private var summaryTimer: Timer?
     @ObservationIgnored private var accountTimer: Timer?
     @ObservationIgnored let audio = AudioPipeline()
@@ -89,43 +99,32 @@ final class AppModel {
     var separatesSpeakers: Bool {
         didSet {
             store(separatesSpeakers, "separatesSpeakers")
-            // Set by hand: it's the user's choice from now on.
-            if !syncingChannels { autoSeparated = false }
             // It only works with both sources, so turning it on picks them; that change reroutes by itself.
             if separatesSpeakers, audioSource != .both, mode != .threeWay { audioSource = .both } else { routingChanged() }
         }
     }
-    /// Me / Them was turned on by Interview answers, so it goes off again when they stop.
-    private var autoSeparated: Bool {
-        get { defaults.bool(forKey: "autoSeparated") }
-        set { defaults.set(newValue, forKey: "autoSeparated") }
-    }
-    @ObservationIgnored private var syncingChannels = false
-
-    /// Choosing a mode sets what's on: Lecture neither, Meeting the summary, Interview the answers.
-    /// Either can still be switched by hand afterwards.
-    func applyModeDefaults() {
-        switch summarizer.mode {
-        case .lecture: summarizer.enabled = false; answerer.enabled = false
-        case .meeting: summarizer.enabled = true; answerer.enabled = false
-        case .interview: summarizer.enabled = false; answerer.enabled = true
+    /// Sets what the mode turns on and off: the summary, the answers, Me / Them, the pinned question
+    /// and polishing. Only on choosing a mode; afterwards each is the user's to change.
+    func applyScene() {
+        let scene = assistantMode.scene
+        summarizer.enabled = scene.summary
+        answerer.enabled = scene.answers
+        pinsQuestions = scene.pinsQuestions
+        if let polishes = scene.polishes { answerer.polishes = polishes }
+        if scene.answers || scene.summary { summarizer.panelShown = true }
+        answerer.panelShowsAnswers = scene.answers
+        let separates = scene.separatesSpeakers && mode != .threeWay
+        if separates != separatesSpeakers {
+            separatesSpeakers = separates
+            if separates { show(tr("Me / Them is on: the microphone is you, Mac audio everyone else. Wear headphones.")) }
         }
-        syncInterviewChannels()
     }
 
-    /// Interview answers need to know which words are mine, so they turn Me / Them on, and off again after.
-    func syncInterviewChannels() {
-        let wanted = summarizer.mode == .interview && answerer.enabled
-        syncingChannels = true
-        defer { syncingChannels = false }
-        if wanted, !separatesSpeakers, mode != .threeWay {
-            separatesSpeakers = true
-            autoSeparated = true
-            show(tr("Me / Them is on for Interview answers. Wear headphones."))
-        } else if !wanted, autoSeparated {
-            autoSeparated = false
-            if separatesSpeakers { separatesSpeakers = false }
-        }
+    /// Interview answers need to know which words are mine: turning them on in Interview mode turns on Me / Them.
+    private func answersChanged() {
+        guard answerer.enabled, assistantMode == .interview, !separatesSpeakers, mode != .threeWay else { return }
+        separatesSpeakers = true
+        show(tr("Me / Them is on for Interview answers. Wear headphones."))
     }
 
     /// In Me / Them mode, whether your own words are translated too, or only written down.
@@ -263,6 +262,11 @@ final class AppModel {
     init() {
         Self.adoptOriginalSettings()
         let d = UserDefaults.standard
+        let service = AssistantService()
+        assistant = service
+        summarizer = Summarizer(service: service)
+        answerer = Answerer(service: service)
+        assistantMode = AssistantMode(rawValue: d.string(forKey: "assistant.mode") ?? "") ?? .meeting
         let env = ProcessInfo.processInfo.environment
         apiKey = SecretStore.read() ?? env["SONIOX_API_KEY"] ?? ""
         let storedRegion = SonioxRegion(rawValue: d.string(forKey: "region") ?? "")
@@ -322,8 +326,7 @@ final class AppModel {
                 self.handleTranslation(event, lane: lane)
             }
         }
-        summarizer.onModeChange = { [weak self] in self?.applyModeDefaults() }
-        answerer.onEnabledChange = { [weak self] in self?.syncInterviewChannels() }
+        answerer.onEnabledChange = { [weak self] in self?.answersChanged() }
         answerer.onAnswer = { [weak self] in
             guard let self else { return }
             // A fresh answer is what the reader wants to see next.
@@ -526,7 +529,7 @@ final class AppModel {
         transcript.clearProvisional()
         store.save(transcript)
         flushUsage()
-        summarizer.catchUp(transcript, language: assistantLanguage, name: summaryName(in: transcript))
+        summarizer.catchUp(transcript, mode: assistantMode, language: assistantLanguage, name: summaryName(in: transcript))
         // Soniox's own numbers lag a little; look again once this session has been billed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.refreshAccount() }
     }
@@ -803,7 +806,7 @@ final class AppModel {
     var assistantLanguage: OutputLanguage {
         let translated = mode == .transcribe ? (source == "auto" ? Localizer.shared.resolved.rawValue : source)
             : mode == .twoWay ? languageB : target
-        switch summarizer.language {
+        switch assistant.language {
         case "": return OutputLanguage(Self.englishName(translated))
         case "guide":
             // Explain in the language captions translate into (also remembered while only transcribing);
@@ -812,7 +815,7 @@ final class AppModel {
             var explain = mode == .twoWay ? languageB : target
             if explain == spoken { explain = spoken == "zh" ? "en" : "zh" }
             return OutputLanguage(Self.englishName(explain), spoken: Self.englishName(spoken))
-        default: return OutputLanguage(Self.englishName(summarizer.language))
+        default: return OutputLanguage(Self.englishName(assistant.language))
         }
     }
 
@@ -850,17 +853,17 @@ final class AppModel {
     private func tickSummary() {
         guard [.live, .standby, .paused].contains(status) else { return }
         if summarizer.enabled {
-            summarizer.tick(transcript, language: assistantLanguage, name: summaryName(in: transcript))
+            summarizer.tick(transcript, mode: assistantMode, language: assistantLanguage, name: summaryName(in: transcript))
         }
         if answerer.enabled {
             let hasChannels = transcript.visibleSpeakers.contains { Channel($0.id) != nil }
-            answerer.tick(transcript, summarizer: summarizer, language: assistantLanguage,
+            answerer.tick(transcript, mode: assistantMode, language: assistantLanguage,
                           channelsOnly: hasChannels, name: summaryName(in: transcript))
         }
     }
 
     func refreshSummary(_ t: Transcript) {
-        summarizer.refresh(t, language: assistantLanguage, name: summaryName(in: t))
+        summarizer.refresh(t, mode: assistantMode, language: assistantLanguage, name: summaryName(in: t))
     }
 
     // MARK: Soniox account

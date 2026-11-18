@@ -8,6 +8,7 @@ struct SettingsView: View {
             Tab(tr("General"), systemImage: "gearshape") { GeneralSettings() }
             Tab(tr("Captions"), systemImage: "captions.bubble") { CaptionSettings() }
             Tab(tr("Assistant"), systemImage: "text.badge.star") { SummarySettings() }
+            Tab(tr("Knowledge"), systemImage: "books.vertical") { KnowledgeSettings() }
             Tab(tr("Usage"), systemImage: "chart.bar") { UsageSettings() }
             Tab(tr("Shortcuts"), systemImage: "command") { ShortcutSettings() }
         }
@@ -55,18 +56,6 @@ private struct GeneralSettings: View {
                 LabeledContent(tr("Languages")) { Text(model.languageSummary).foregroundStyle(.secondary) }
             } footer: {
                 Text(tr("Change languages from the globe button while listening."))
-            }
-            Section {
-                Toggle(tr("Label Me and Them by source"), isOn: $model.separatesSpeakers)
-                Toggle(tr("Translate my speech"), isOn: $model.translatesMyVoice)
-                    .disabled(!model.separatesSpeakers)
-                Toggle(tr("Pin the latest question"), isOn: $model.pinsQuestions)
-            } header: {
-                Text(tr("Meetings and interviews"))
-            } footer: {
-                Text(model.separatesSpeakers && !model.splitsBySource
-                     ? tr("Me / Them needs Mac Audio + Microphone, and doesn’t apply in three-way mode.")
-                     : tr("The microphone is always you and the Mac audio is everyone else. Turning this on switches the input to Mac Audio + Microphone and runs a second Soniox stream, so it costs about twice as much while on. Wear headphones, or the microphone hears the other side too."))
             }
             Section {
                 Toggle(tr("Pause when it’s quiet"), isOn: $model.pausesWhenQuiet)
@@ -145,25 +134,35 @@ private struct CaptionSettings: View {
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var service = model.assistant
         Form {
+            // One look for everything that floats over other apps: captions, the assistant card, its button.
             Section {
+                Picker(tr("Style"), selection: $model.captionStyle) {
+                    ForEach(CaptionStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                if model.captionStyle == .dark {
+                    LabeledContent(tr("Background opacity")) {
+                        HStack {
+                            Slider(value: $model.captionBackgroundOpacity, in: AppModel.captionBackgroundRange, step: 0.05)
+                            Text(verbatim: "\(Int((model.captionBackgroundOpacity * 100).rounded()))%")
+                                .monospacedDigit().frame(width: 40, alignment: .trailing)
+                        }
+                    }
+                }
                 Toggle(tr("Liquid Glass"), isOn: $model.liquidGlass)
                     .disabled(!LukaGlassSupport.available)
+            } header: {
+                Text(tr("Appearance"))
             } footer: {
-                Text(LukaGlassSupport.available
-                     ? tr("Turn off for solid, higher-contrast captions and controls.")
-                     : tr("Liquid Glass needs macOS 26. Luka uses system materials on this Mac."))
+                Text(tr("The Dark style and its opacity also apply to the floating summary and answers card."))
+                + Text(verbatim: " ")
+                + Text(LukaGlassSupport.available
+                       ? tr("Turn off for solid, higher-contrast captions and controls.")
+                       : tr("Liquid Glass needs macOS 26. Luka uses system materials on this Mac."))
             }
-            Section {
-                Picker(tr("Show captions"), selection: $model.captionVisibility) {
-                    Text(tr("While listening")).tag(CaptionVisibility.whileListening)
-                    Text(tr("Always")).tag(CaptionVisibility.always)
-                }
-            } footer: {
-                Text(model.captionVisibility == .whileListening
-                     ? tr("Captions fade in when Luka starts listening and out when you finish. ⌃⌥C hides or shows them anytime.")
-                     : tr("Captions stay until you hide them with ⌃⌥C."))
-            }
+
             Section {
                 Picker(tr("Font"), selection: $model.fontFamily) {
                     Text(tr("System")).tag("")
@@ -181,36 +180,23 @@ private struct CaptionSettings: View {
                     Text(tr("Medium")).tag(CaptionWeight.medium)
                 }
                 .pickerStyle(.segmented)
+                size(tr("Captions"), $model.captionFontSize, AppModel.captionFontRange, step: 2)
+                size(tr("Original text size"), $model.captionOriginalFontSize, AppModel.captionOriginalFontRange, step: 1)
+                    .disabled(!model.captionShowsOriginal)
+                size(tr("Transcript"), $model.transcriptFontSize, AppModel.transcriptFontRange, step: 1)
+                size(tr("Summary and answers"), $service.fontSize, AssistantService.fontRange, step: 1)
+                size(tr("Shared Captions"), $model.presenterFontSize, AppModel.presenterFontRange, step: 4)
+            } header: {
+                Text(tr("Fonts"))
             } footer: {
                 Text(tr("Used for captions, the transcript and the summary. The Chinese font applies to Chinese and Japanese characters; English keeps the main font."))
             }
+
             Section {
-                Picker(tr("Style"), selection: $model.captionStyle) {
-                    ForEach(CaptionStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+                Picker(tr("Show captions"), selection: $model.captionVisibility) {
+                    Text(tr("While listening")).tag(CaptionVisibility.whileListening)
+                    Text(tr("Always")).tag(CaptionVisibility.always)
                 }
-                .pickerStyle(.segmented)
-                if model.captionStyle == .dark {
-                    LabeledContent(tr("Background opacity")) {
-                        HStack {
-                            Slider(value: $model.captionBackgroundOpacity, in: AppModel.captionBackgroundRange, step: 0.05)
-                            Text(verbatim: "\(Int((model.captionBackgroundOpacity * 100).rounded()))%")
-                                .monospacedDigit().frame(width: 40, alignment: .trailing)
-                        }
-                    }
-                }
-                LabeledContent(tr("Text size")) {
-                    HStack {
-                        Slider(value: $model.captionFontSize, in: AppModel.captionFontRange, step: 2)
-                        Text(verbatim: "\(Int(model.captionFontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
-                    }
-                }
-                LabeledContent(tr("Original text size")) {
-                    HStack {
-                        Slider(value: $model.captionOriginalFontSize, in: AppModel.captionOriginalFontRange, step: 1)
-                        Text(verbatim: "\(Int(model.captionOriginalFontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
-                    }
-                }
-                .disabled(!model.captionShowsOriginal)
                 Stepper(value: $model.captionLines, in: AppModel.captionLineRange) {
                     LabeledContent(tr("Lines"), value: "\(model.captionLines)")
                 }
@@ -224,35 +210,34 @@ private struct CaptionSettings: View {
                         Text(Languages.name(model.captionLanguage, in: Localizer.shared.locale)).tag(model.captionLanguage)
                     }
                 }
+            } header: {
+                Text(tr("Captions"))
             } footer: {
-                Text(tr("Drag the caption’s top or bottom edge to add lines, its sides to resize. Drop it near the center and it snaps."))
+                Text(model.captionVisibility == .whileListening
+                     ? tr("Captions fade in when Luka starts listening and out when you finish. ⌃⌥C hides or shows them anytime.")
+                     : tr("Captions stay until you hide them with ⌃⌥C."))
+                + Text(verbatim: " ")
+                + Text(tr("Drag the caption’s top or bottom edge to add lines, its sides to resize. Drop it near the center and it snaps."))
                 + Text(verbatim: " ")
                 + Text(tr("In three-way mode, captions can show one translation, with the original small above it. Shared Captions always shows all."))
             }
+
             Section(tr("Transcript")) {
-                LabeledContent(tr("Text size")) {
-                    HStack {
-                        Slider(value: $model.transcriptFontSize, in: AppModel.transcriptFontRange, step: 1)
-                        Text(verbatim: "\(Int(model.transcriptFontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
-                    }
-                }
                 Toggle(tr("Show Original"), isOn: $model.transcriptShowsOriginal)
-            }
-            Section {
-                LabeledContent(tr("Text size")) {
-                    HStack {
-                        Slider(value: $model.presenterFontSize, in: AppModel.presenterFontRange, step: 4)
-                        Text(verbatim: "\(Int(model.presenterFontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
-                    }
-                }
-            } header: {
-                Text(tr("Shared Captions"))
-            } footer: {
-                Text(tr("A regular window for sharing in video calls, with every translation and the original. Open it with ⌘3 and pick it when sharing a window."))
             }
         }
         .formStyle(.grouped)
         .frame(height: 470)
+    }
+
+    /// A text size slider with its value.
+    private func size(_ title: String, _ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double) -> some View {
+        LabeledContent(title) {
+            HStack {
+                Slider(value: value, in: range, step: step)
+                Text(verbatim: "\(Int(value.wrappedValue))").monospacedDigit().frame(width: 28, alignment: .trailing)
+            }
+        }
     }
 }
 
@@ -368,6 +353,8 @@ private struct SummarySettings: View {
     ]
 
     var body: some View {
+        @Bindable var model = model
+        @Bindable var service = model.assistant
         @Bindable var summarizer = model.summarizer
         @Bindable var answerer = model.answerer
         Form {
@@ -376,69 +363,63 @@ private struct SummarySettings: View {
                     Menu(tr("Choose a preset")) {
                         ForEach(Self.presets) { preset in
                             Button(preset.name) {
-                                summarizer.provider = preset.provider
-                                summarizer.baseURL = preset.baseURL
-                                summarizer.model = preset.model
+                                service.provider = preset.provider
+                                service.baseURL = preset.baseURL
+                                service.model = preset.model
                             }
                         }
                     }
                     .fixedSize()
                 }
-                Picker(tr("API type"), selection: $summarizer.provider) {
+                Picker(tr("API type"), selection: $service.provider) {
                     Text(tr("OpenAI-compatible")).tag(SummaryProvider.openAI)
                     Text(tr("Anthropic (Claude)")).tag(SummaryProvider.anthropic)
                 }
-                TextField(tr("Base URL"), text: $summarizer.baseURL, prompt: Text(verbatim: summarizer.provider.defaultBaseURL))
-                TextField(tr("Model"), text: $summarizer.model, prompt: Text(tr("The model’s name at this service")))
-                SecureField(tr("API key"), text: $summarizer.apiKey)
+                TextField(tr("Base URL"), text: $service.baseURL, prompt: Text(verbatim: service.provider.defaultBaseURL))
+                TextField(tr("Model"), text: $service.model, prompt: Text(tr("The model’s name at this service")))
+                SecureField(tr("API key"), text: $service.apiKey)
                 HStack {
-                    if summarizer.testing {
+                    if service.testing {
                         ProgressView().controlSize(.small)
-                    } else if let result = summarizer.testResult {
+                    } else if let result = service.testResult {
                         Text(result).foregroundStyle(.secondary).lineLimit(2)
                     }
                     Spacer()
-                    Button(tr("Test")) { summarizer.test() }
-                        .disabled(summarizer.testing || !summarizer.isConfigured)
+                    Button(tr("Test")) { service.test() }
+                        .disabled(service.testing || !service.isConfigured)
                 }
                 .font(.callout)
             } header: {
                 Text(tr("Model"))
             } footer: {
-                Text(tr("One model, with its own API key, writes both the summary and the answers. A preset fills in the address and a model name to start from; check the name against the service’s current models. Ollama runs on this Mac and needs no key."))
+                Text(tr("One model, with its own API key, writes both the summary and the answers. A preset fills in the address and a model name to start from."))
             }
+
+            // The mode sets the scene; every switch it sets stays here to change by hand.
             Section {
-                Picker(tr("Mode"), selection: $summarizer.mode) {
-                    ForEach(AssistantMode.allCases, id: \.self) { Text($0.title).tag($0) }
+                Picker(tr("Mode"), selection: $model.assistantMode) {
+                    ForEach(AssistantMode.allCases, id: \.self) { Label($0.title, systemImage: $0.symbol).tag($0) }
                 }
                 .pickerStyle(.segmented)
-            } footer: {
-                Text(summarizer.mode.explanation + " " + tr("The mode can also be changed in the column beside the transcript."))
-            }
-            Section {
                 Toggle(tr("Summarize while listening"), isOn: $summarizer.enabled)
-                Group {
-                    Picker(tr("Detail"), selection: $summarizer.detail) {
-                        Text(tr("Concise")).tag(SummaryDetail.concise)
-                        Text(tr("Standard")).tag(SummaryDetail.standard)
-                        Text(tr("Detailed")).tag(SummaryDetail.detailed)
-                    }
-                    .pickerStyle(.segmented)
-                    TextField(tr("Extra instructions"), text: $summarizer.instructions,
-                              prompt: Text(tr("Optional, e.g. “This is an actuarial interview; list every technical question.”")), axis: .vertical)
-                        .lineLimit(2...5)
-                }
-                .disabled(!summarizer.enabled)
-            } header: {
-                Text(tr("Summary"))
-            } footer: {
-                Text(tr("In Meeting and Interview mode, new points are added at the end every few sentences and what is already written stays put. In Lecture mode the whole summary is rewritten as the talk goes on."))
-            }
-            .onChange(of: summarizer.enabled) {
-                if summarizer.enabled { summarizer.panelShown = true }
-            }
-            Section {
                 Toggle(tr("Answer questions as they’re asked"), isOn: $answerer.enabled)
+                Toggle(tr("Polish my answers"), isOn: $answerer.polishes)
+                    .disabled(!answerer.enabled || model.assistantMode != .interview)
+                Toggle(tr("Label Me and Them by source"), isOn: $model.separatesSpeakers)
+                Toggle(tr("Translate my speech"), isOn: $model.translatesMyVoice)
+                    .disabled(!model.separatesSpeakers)
+                Toggle(tr("Pin the latest question"), isOn: $model.pinsQuestions)
+            } header: {
+                Text(tr("Mode"))
+            } footer: {
+                Text(model.assistantMode.explanation + " " + tr("Choosing a mode sets these switches; change any of them afterwards as you like. The mode can also be changed at the top of the summary column."))
+                + Text(verbatim: "\n")
+                + Text(model.separatesSpeakers && !model.splitsBySource
+                       ? tr("Me / Them needs Mac Audio + Microphone, and doesn’t apply in three-way mode.")
+                       : tr("Me / Them: the microphone is always you and the Mac audio is everyone else, numbered Them 1, Them 2… It runs a second Soniox stream, so it costs about twice as much while on. Wear headphones."))
+            }
+
+            Section {
                 LabeledContent(tr("Interviewing for")) {
                     HStack(spacing: 6) {
                         TextField("", text: $answerer.role, prompt: Text(verbatim: "Data Scientist"))
@@ -452,24 +433,60 @@ private struct SummarySettings: View {
                         .fixedSize()
                     }
                 }
-                .disabled(!answerer.enabled)
-                Toggle(tr("Polish my answers"), isOn: $answerer.polishes)
-                    .disabled(!answerer.enabled)
-                TextField(tr("Extra instructions"), text: $answerer.instructions,
-                          prompt: Text(tr("Optional, e.g. “Answer in first person, as a candidate for an actuarial analyst role.”")), axis: .vertical)
+                TextField(tr("About this conversation"), text: $service.note,
+                          prompt: Text(tr("Optional, e.g. “Second-round interview at an insurer; list every technical question.”")), axis: .vertical)
                     .lineLimit(2...5)
-                    .disabled(!answerer.enabled)
             } header: {
-                Text(tr("Answers"))
+                Text(tr("This conversation"))
             } footer: {
-                Text(tr("Lecture mode answers nothing. Meeting mode answers only factual or technical questions. Interview mode answers the questions an interviewer asks for the role above (technical, case, behavioral, experience, motivation), and suggests questions to ask back; add your resume and the job description to the knowledge base. With Me / Them on, your own questions are never answered.") + " " + tr("Polish my answers: in Interview mode with Me / Them, after you finish an answer, a smoother way to say it in the language you spoke, plus up to three quick fixes (grammar, natural phrasing, getting back to the question, a closing line, a number to add)."))
+                Text(tr("Read by both the summary and the answers. The role tells Interview mode which questions are interview questions."))
             }
-            .onChange(of: answerer.enabled) {
-                if answerer.enabled {
-                    summarizer.panelShown = true
-                    answerer.panelShowsAnswers = true
+
+            Section {
+                Picker(tr("Summary detail"), selection: $summarizer.detail) {
+                    Text(tr("Concise")).tag(SummaryDetail.concise)
+                    Text(tr("Standard")).tag(SummaryDetail.standard)
+                    Text(tr("Detailed")).tag(SummaryDetail.detailed)
                 }
+                .pickerStyle(.segmented)
+                Picker(tr("Language"), selection: $service.language) {
+                    Text(tr("Same as translation")).tag("")
+                    Text(tr("Guide (bilingual)")).tag("guide")
+                    Divider()
+                    ForEach(Languages.ordered(in: Localizer.shared.locale), id: \.self) {
+                        Text(Languages.name($0, in: Localizer.shared.locale)).tag($0)
+                    }
+                }
+                Toggle(tr("Floating button while listening"), isOn: $model.showsDockButton)
+            } header: {
+                Text(tr("Output"))
+            } footer: {
+                Text((service.language == "guide"
+                      ? tr("Guide: explanations in the translation language; technical terms, key original wording and anything to say aloud (sample answers, questions to ask) in the spoken language.") + " "
+                      : "")
+                     + tr("In Meeting and Interview mode, new points are added at the end every few sentences and what is already written stays put. The floating button sits on the right edge of the screen; its top half opens the summary and answers, its bottom half shows or hides the captions. Text size is in Captions › Fonts."))
             }
+        }
+        .formStyle(.grouped)
+        .frame(height: 470)
+        // Turning a helper on brings its column into view.
+        .onChange(of: summarizer.enabled) { if summarizer.enabled { summarizer.panelShown = true } }
+        .onChange(of: answerer.enabled) {
+            if answerer.enabled {
+                summarizer.panelShown = true
+                answerer.panelShowsAnswers = true
+            }
+        }
+    }
+}
+
+/// Files, folders and notes the answers draw on first.
+private struct KnowledgeSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var answerer = model.answerer
+        Form {
             Section {
                 ForEach(answerer.sources) { source in
                     HStack(spacing: 8) {
@@ -494,37 +511,20 @@ private struct SummarySettings: View {
                     Spacer()
                     if answerer.loading { ProgressView().controlSize(.small) }
                 }
-                TextField(tr("My notes"), text: $answerer.notes,
-                          prompt: Text(tr("Facts about you worth knowing: role, background, projects, numbers…")), axis: .vertical)
-                    .lineLimit(3...8)
             } header: {
-                Text(tr("Knowledge base"))
+                Text(tr("Files and folders"))
             } footer: {
                 Text(tr("Answers use this first, and the model’s own knowledge only for what it doesn’t cover. Folders are read where they are (Markdown, text, PDF, Word), including subfolders, and reread at the start of every session, so an existing notes or memory folder works as it is. The excerpts that match a question are sent to the model’s provider."))
             }
             Section {
-                Picker(tr("Language"), selection: $summarizer.language) {
-                    Text(tr("Same as translation")).tag("")
-                    Text(tr("Guide (bilingual)")).tag("guide")
-                    Divider()
-                    ForEach(Languages.ordered(in: Localizer.shared.locale), id: \.self) {
-                        Text(Languages.name($0, in: Localizer.shared.locale)).tag($0)
-                    }
-                }
-                LabeledContent(tr("Text size")) {
-                    HStack {
-                        Slider(value: $summarizer.fontSize, in: Summarizer.fontRange, step: 1)
-                        Text(verbatim: "\(Int(summarizer.fontSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
-                    }
-                }
-                Toggle(tr("Floating button while listening"), isOn: Binding(get: { model.showsDockButton }, set: { model.showsDockButton = $0 }))
+                TextField(tr("My notes"), text: $answerer.notes,
+                          prompt: Text(tr("Facts about you worth knowing: role, background, projects, numbers…")), axis: .vertical)
+                    .lineLimit(6...14)
+                    .labelsHidden()
             } header: {
-                Text(tr("Display"))
+                Text(tr("My notes"))
             } footer: {
-                Text((summarizer.language == "guide"
-                      ? tr("Guide: explanations in the translation language; technical terms, key original wording and anything to say aloud (sample answers, questions to ask) in the spoken language.") + " "
-                      : "")
-                     + tr("The language and text size of the summary and the answers. The floating button sits on the right edge of the screen; click it for the summary and answers over any app, drag it up or down."))
+                Text(tr("Stays the same from one conversation to the next. For what is only about this one, use Assistant › This conversation."))
             }
         }
         .formStyle(.grouped)

@@ -87,14 +87,15 @@ public struct SummaryEndpoint: Sendable, Equatable {
         }
     }
 
-    public func request(apiKey: String, system: String, user: String, maxTokens: Int = 1_500) -> URLRequest? {
+    /// `stream` asks for server-sent events, read with `streamChunk(_:)`.
+    public func request(apiKey: String, system: String, user: String, maxTokens: Int = 1_500, stream: Bool = false) -> URLRequest? {
         guard let url else { return nil }
         var r = URLRequest(url: url)
         r.httpMethod = "POST"
         r.timeoutInterval = 60
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let body: [String: Any]
+        var body: [String: Any]
         switch provider {
         case .openAI:
             if !key.isEmpty { r.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
@@ -113,6 +114,12 @@ public struct SummaryEndpoint: Sendable, Equatable {
                 "messages": [["role": "user", "content": user]],
             ]
         }
+        if stream {
+            body["stream"] = true
+            r.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            // Thinking first can take a while before any text arrives.
+            r.timeoutInterval = 120
+        }
         r.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         return r
     }
@@ -126,6 +133,59 @@ public struct SummaryEndpoint: Sendable, Equatable {
             case .empty: "The model returned no text."
             }
         }
+    }
+
+    /// One piece of a streamed reply.
+    public enum StreamChunk: Equatable, Sendable {
+        /// More of the reply's text.
+        case text(String)
+        /// Why the model stopped.
+        case stop(String)
+        case error(String)
+        /// The stream is over.
+        case done
+    }
+
+    /// Reads one line of a server-sent event stream. Nil for lines that carry nothing to show:
+    /// event names, keep-alives, and the model's thinking.
+    public func streamChunk(_ line: String) -> StreamChunk? {
+        let line = line.trimmingCharacters(in: .whitespaces)
+        guard line.hasPrefix("data:") else { return nil }
+        let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+        if payload == "[DONE]" { return .done }
+        guard let json = (try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] else { return nil }
+        if let error = json["error"] as? [String: Any] { return .error(error["message"] as? String ?? "\(error)") }
+        if let error = json["error"] as? String { return .error(error) }
+        switch provider {
+        case .openAI:
+            let choice = (json["choices"] as? [[String: Any]])?.first
+            if let text = (choice?["delta"] as? [String: Any])?["content"] as? String, !text.isEmpty { return .text(text) }
+            if let stop = choice?["finish_reason"] as? String { return .stop(stop) }
+            return nil
+        case .anthropic:
+            switch json["type"] as? String {
+            case "content_block_delta":
+                let delta = json["delta"] as? [String: Any]
+                guard delta?["type"] as? String == "text_delta", let text = delta?["text"] as? String else { return nil }
+                return .text(text)
+            case "message_delta":
+                return ((json["delta"] as? [String: Any])?["stop_reason"] as? String).map { .stop($0) }
+            case "message_stop":
+                return .done
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// The finished text of a streamed reply, with the same checks as `parse(_:)`.
+    public func finish(streamed text: String, stop: String?) throws -> String {
+        let cleaned = SummaryPrompt.clean(text)
+        if cleaned.isEmpty {
+            if let stop, stop != "stop", stop != "end_turn" { throw ResponseError.api("The model returned no text (stopped: \(stop)).") }
+            throw ResponseError.empty
+        }
+        return cleaned
     }
 
     /// The reply text, or the API's own error message.
