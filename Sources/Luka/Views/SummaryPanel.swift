@@ -922,15 +922,18 @@ private struct AskBar: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 10, style: .continuous))
+            .background(Color.primary.opacity(0.08), in: .rect(cornerRadius: 10, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(focused ? AnyShapeStyle(LukaTheme.accent.opacity(0.6)) : AnyShapeStyle(Color.primary.opacity(0.1)),
+                    .strokeBorder(focused ? AnyShapeStyle(LukaTheme.accent.opacity(0.7)) : AnyShapeStyle(Color.primary.opacity(0.18)),
                                   lineWidth: 0.75)
             }
             .padding(.horizontal, SummaryPanel.inset - 4)
             .padding(.vertical, 10)
         }
+        // A frosted backing so answers scrolling underneath don't show through the box,
+        // above all on the see-through floating card.
+        .background(.thickMaterial)
     }
 
     private var canSend: Bool {
