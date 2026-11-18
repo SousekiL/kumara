@@ -230,11 +230,17 @@ private struct CaptionSettings: View {
         .frame(height: 470)
     }
 
-    /// A text size slider with its value.
+    /// One scale for every text size slider, so the same size sits at the same spot on each.
+    private static let sizeScale = 10.0...96.0
+
+    /// A text size slider with its value. It runs along the shared scale and stops at the ends of its own range.
     private func size(_ title: String, _ value: Binding<Double>, _ range: ClosedRange<Double>, step: Double) -> some View {
-        LabeledContent(title) {
+        let clamped = Binding<Double>(
+            get: { value.wrappedValue },
+            set: { value.wrappedValue = min(max(($0 / step).rounded() * step, range.lowerBound), range.upperBound) })
+        return LabeledContent(title) {
             HStack {
-                Slider(value: value, in: range, step: step)
+                Slider(value: clamped, in: Self.sizeScale)
                 Text(verbatim: "\(Int(value.wrappedValue))").monospacedDigit().frame(width: 28, alignment: .trailing)
             }
         }
