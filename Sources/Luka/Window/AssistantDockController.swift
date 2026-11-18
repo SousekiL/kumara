@@ -83,6 +83,7 @@ final class AssistantDockController: NSObject {
             _ = model.status
             _ = model.showsDockButton
             _ = model.dockOpen
+            _ = model.captionStyle
         } onChange: { [weak self] in
             DispatchQueue.main.async {
                 self?.apply()
@@ -95,6 +96,8 @@ final class AssistantDockController: NSObject {
     private var popupShown = false
 
     private func apply() {
+        // Match the captions: with the Dark style the card and its controls are dark too.
+        popup.appearance = model.captionStyle == .dark ? NSAppearance(named: .darkAqua) : nil
         let wanted = model.showsDockButton && model.status != .idle
         if wanted != buttonShown {
             buttonShown = wanted
@@ -240,14 +243,27 @@ private struct DockButton: View {
 /// The summary and answers column, as a floating card.
 private struct DockPopup: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let dark = model.captionStyle == .dark
         SummaryPanel(transcript: model.transcript)
             .id(model.cjkFontFamily)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.regularMaterial, in: .rect(cornerRadius: 16))
+            .background {
+                // Same black and opacity as the Dark caption window.
+                if dark {
+                    RoundedRectangle(cornerRadius: 16).fill(.black.opacity(model.captionBackgroundOpacity))
+                } else {
+                    RoundedRectangle(cornerRadius: 16).fill(.regularMaterial)
+                }
+            }
             .clipShape(.rect(cornerRadius: 16))
-            .overlay { RoundedRectangle(cornerRadius: 16).strokeBorder(.separator) }
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(dark ? AnyShapeStyle(.white.opacity(0.08)) : AnyShapeStyle(.separator))
+            }
+            .environment(\.colorScheme, dark ? .dark : colorScheme)
             .environment(\.fontFamily, model.fontFamily)
             .environment(\.usesGlass, model.usesGlass)
     }
