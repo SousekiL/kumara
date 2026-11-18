@@ -199,6 +199,7 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Hide captions": "隐藏字幕",
         "Chinese font": "中文字体",
         "System (PingFang)": "系统（苹方）",
         "Caption weight": "字幕字重",

@@ -6,7 +6,7 @@ import SwiftUI
 /// the summary and the answers, floating over whatever app is in front, full-screen ones included.
 @MainActor
 final class AssistantDockController: NSObject {
-    static let buttonSize = NSSize(width: 36, height: 70)
+    nonisolated static let buttonSize = NSSize(width: 36, height: 70)
     static let popupSize = NSSize(width: 380, height: 540)
     static let edgeInset: CGFloat = 6
 
@@ -22,7 +22,7 @@ final class AssistantDockController: NSObject {
         super.init()
 
         let buttonHost = NSHostingView(rootView: LocalizedRoot {
-            DockButton(onChanged: { [weak self] in self?.dragChanged() }, onEnded: { [weak self] in self?.dragEnded() })
+            DockButton(onChanged: { [weak self] in self?.dragChanged() }, onEnded: { [weak self] in self?.dragEnded(top: $0) })
         }.environment(model))
         buttonHost.sizingOptions = []
         button.contentView = buttonHost
@@ -154,11 +154,12 @@ final class AssistantDockController: NSObject {
         if popup.isVisible { popup.setFrame(popupFrame(), display: true) }
     }
 
-    private func dragEnded() {
+    /// `top` says which half was pressed: the top opens the summary and answers, the bottom shows or hides captions.
+    private func dragEnded(top: Bool) {
         defer { drag = nil }
         guard let d = drag, d.moved else {
             // A press without movement is a click.
-            model.dockOpen.toggle()
+            if top { model.dockOpen.toggle() } else { model.setCaptions(!model.captionsVisible) }
             return
         }
         let visible = screen.visibleFrame
@@ -171,32 +172,45 @@ final class AssistantDockController: NSObject {
 private struct DockButton: View {
     @Environment(AppModel.self) private var model
     let onChanged: () -> Void
-    let onEnded: () -> Void
+    /// Called with whether the press started in the top half.
+    let onEnded: (Bool) -> Void
 
-    @State private var hovering = false
+    private enum Half { case top, bottom }
+    @State private var hovered: Half?
 
     var body: some View {
         let live = model.status == .live
-        VStack(spacing: 9) {
+        let captions = model.captionsVisible
+        VStack(spacing: 0) {
+            // Top half: the summary and answers.
             Image(systemName: model.dockOpen ? "chevron.right" : "sparkles")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
                 .contentTransition(.symbolEffect(.replace))
-                .frame(height: 14)
-            // Three dots that stretch with the sound; still and grey when paused.
+                .frame(width: 26, height: 28)
+                .background(.white.opacity(hovered == .top ? 0.14 : 0))
+                .help(tr("Summary and answers · drag to move"))
+            Rectangle().fill(.white.opacity(0.12)).frame(width: 14, height: 0.5)
+            // Bottom half: the caption strip. Three dots that move with the sound; hollow when captions are hidden.
             HStack(alignment: .center, spacing: 3) {
                 ForEach(0..<3, id: \.self) { i in
+                    let color = live ? Color.green : Color.white.opacity(0.45)
                     Capsule()
-                        .fill(live ? Color.green : Color.white.opacity(0.35))
-                        .frame(width: 3, height: 3 + (live ? CGFloat(model.level) * (i == 1 ? 9 : 6) : 0))
+                        .fill(captions ? color : .clear)
+                        .overlay { Capsule().strokeBorder(color, lineWidth: captions ? 0 : 1) }
+                        .frame(width: captions ? 3 : 4,
+                               height: captions ? 3 + (live ? CGFloat(model.level) * (i == 1 ? 9 : 6) : 0) : 4)
                 }
             }
-            .frame(width: 18, height: 12)
+            .frame(width: 26, height: 27.5)
+            .background(.white.opacity(hovered == .bottom ? 0.14 : 0))
             .animation(.smooth(duration: 0.18), value: model.level)
+            .help(captions ? tr("Hide captions") : tr("Show captions"))
         }
         .frame(width: 26, height: 56)
+        .clipShape(.capsule)
         // Dark on any background, like the system's own floating controls.
-        .background(.black.opacity(hovering || model.dockOpen ? 0.72 : 0.55), in: .capsule)
+        .background(.black.opacity(hovered != nil || model.dockOpen ? 0.72 : 0.55), in: .capsule)
         .background(.ultraThinMaterial, in: .capsule)
         .overlay { Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 0.5) }
         .shadow(color: .black.opacity(0.25), radius: 4, y: 1)
@@ -206,16 +220,20 @@ private struct DockButton: View {
                     .transition(.scale.combined(with: .opacity))
             }
         }
-        .scaleEffect(hovering ? 1.06 : 1)
-        .animation(.smooth(duration: 0.2), value: hovering)
+        .animation(.smooth(duration: 0.15), value: hovered)
         .animation(.smooth, value: model.dockBadge)
+        .animation(.smooth(duration: 0.2), value: captions)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(.rect)
-        .onHover { hovering = $0 }
-        .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .global)
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            switch phase {
+            case .active(let point): hovered = point.y < AssistantDockController.buttonSize.height / 2 ? .top : .bottom
+            case .ended: hovered = nil
+            }
+        }
+        .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { _ in onChanged() }
-            .onEnded { _ in onEnded() })
-        .help(tr("Summary and answers · drag to move"))
+            .onEnded { value in onEnded(value.startLocation.y < AssistantDockController.buttonSize.height / 2) })
     }
 }
 
