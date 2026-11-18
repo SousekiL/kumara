@@ -199,6 +199,7 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Interviews: interview questions for your role answered in the first person, and your own answers polished; running notes of each question if you turn the summary on. Starts with answers on, the summary off, and Me / Them.": "面试：与岗位相关的问题用第一人称作答，并润色你的回答；打开总结后会逐条记下问题。切到此模式时默认开启回答、关闭总结，并开启“我 / 对方”。",
         "Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers. Starts with the summary and answers off.": "演讲、讲座、播客和视频：一份结构化总结，随内容整体刷新，不回答问题。切到此模式时总结和回答默认关闭。",
         "Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer. Starts with the summary on and answers off.": "会议和通话：按顺序追加要点，标出决定和待办，只回答事实或技术类问题。切到此模式时默认开启总结、关闭回答。",
         "Interviews: running notes of each question; interview questions for your role answered in the first person, and your own answers polished. Starts with both on, and Me / Them.": "面试：逐条记下问题；与岗位相关的问题用第一人称作答，并润色你的回答。切到此模式时总结和回答都默认开启，并开启“我 / 对方”。",

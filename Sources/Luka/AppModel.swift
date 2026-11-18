@@ -102,13 +102,13 @@ final class AppModel {
     }
     @ObservationIgnored private var syncingChannels = false
 
-    /// Choosing a mode sets what's on: Lecture neither, Meeting the summary, Interview both.
+    /// Choosing a mode sets what's on: Lecture neither, Meeting the summary, Interview the answers.
     /// Either can still be switched by hand afterwards.
     func applyModeDefaults() {
         switch summarizer.mode {
         case .lecture: summarizer.enabled = false; answerer.enabled = false
         case .meeting: summarizer.enabled = true; answerer.enabled = false
-        case .interview: summarizer.enabled = true; answerer.enabled = true
+        case .interview: summarizer.enabled = false; answerer.enabled = true
         }
         syncInterviewChannels()
     }

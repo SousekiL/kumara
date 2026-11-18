@@ -388,7 +388,7 @@ extension AssistantMode {
         switch self {
         case .lecture: tr("Talks, lectures, podcasts and videos: one structured summary, rewritten as the talk goes on. No answers. Starts with the summary and answers off.")
         case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer. Starts with the summary on and answers off.")
-        case .interview: tr("Interviews: running notes of each question; interview questions for your role answered in the first person, and your own answers polished. Starts with both on, and Me / Them.")
+        case .interview: tr("Interviews: interview questions for your role answered in the first person, and your own answers polished; running notes of each question if you turn the summary on. Starts with answers on, the summary off, and Me / Them.")
         }
     }
 }
