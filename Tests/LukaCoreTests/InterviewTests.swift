@@ -445,3 +445,18 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(PolishPrompt.user(question: "Q?", answer: "A", knowledge: "").contains("<question>\nQ?"))
     }
 }
+
+@Suite struct EmptyReplyTests {
+    @Test func emptyRepliesSayWhy() throws {
+        let claude = SummaryEndpoint(provider: .anthropic, baseURL: "", model: "m")
+        #expect(throws: SummaryEndpoint.ResponseError.api("The model returned no text (stopped: max_tokens).")) {
+            try claude.parse(Data(#"{"content":[{"type":"thinking","thinking":"…"}],"stop_reason":"max_tokens"}"#.utf8))
+        }
+        #expect(throws: SummaryEndpoint.ResponseError.empty) {
+            try claude.parse(Data(#"{"content":[],"stop_reason":"end_turn"}"#.utf8))
+        }
+        let r = try #require(claude.request(apiKey: "k", system: "s", user: "u"))
+        let body = try #require(JSONSerialization.jsonObject(with: r.httpBody!) as? [String: Any])
+        #expect((body["thinking"] as? [String: String])?["type"] == "disabled")
+    }
+}

@@ -138,6 +138,8 @@ final class Summarizer {
                 let covered = max(lastID ?? -1, t.summary?.coveredLineID ?? -1)
                 t.summary = SummaryPrompt.merge(t.summary, reply: reply, coveredLineID: covered, replacing: replacing)
                 lastError = nil
+            } catch SummaryEndpoint.ResponseError.empty {
+                lastError = nil
             } catch {
                 lastError = error.localizedDescription
                 AudioLog.write("summary failed: \(error.localizedDescription)")

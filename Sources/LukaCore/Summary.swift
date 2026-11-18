@@ -111,6 +111,8 @@ public struct SummaryEndpoint: Sendable, Equatable {
                 "max_tokens": maxTokens,
                 "system": system,
                 "messages": [["role": "user", "content": user]],
+                // Short live replies: thinking first only adds delay and can use up the whole budget.
+                "thinking": ["type": "disabled"],
             ]
         }
         r.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
@@ -136,17 +138,24 @@ public struct SummaryEndpoint: Sendable, Equatable {
         }
         if let error = json["error"] as? String { throw ResponseError.api(error) }
         let text: String
+        let stop: String?
         switch provider {
         case .openAI:
             let choices = json["choices"] as? [[String: Any]] ?? []
             let message = choices.first?["message"] as? [String: Any]
             text = message?["content"] as? String ?? ""
+            stop = choices.first?["finish_reason"] as? String
         case .anthropic:
             let content = json["content"] as? [[String: Any]] ?? []
             text = content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined()
+            stop = json["stop_reason"] as? String
         }
         let cleaned = SummaryPrompt.clean(text)
-        if cleaned.isEmpty { throw ResponseError.empty }
+        if cleaned.isEmpty {
+            // Say why, so a token limit or a reasoning model can be told from a real failure.
+            if let stop, stop != "stop", stop != "end_turn" { throw ResponseError.api("The model returned no text (stopped: \(stop)).") }
+            throw ResponseError.empty
+        }
         return cleaned
     }
 }

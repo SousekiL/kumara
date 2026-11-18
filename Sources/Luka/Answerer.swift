@@ -147,7 +147,7 @@ final class Answerer {
         let endpoint = summarizer.endpoint
         guard let request = endpoint.request(apiKey: summarizer.apiKey,
                                              system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: instructions),
-                                             user: user, maxTokens: 500) else { return }
+                                             user: user, maxTokens: 1_200) else { return }
         working = true
         Task {
             defer { working = false }
@@ -158,6 +158,9 @@ final class Answerer {
                 t.answers.append(QuestionAnswer(id: line.id, question: line.original, answer: answer.text,
                                                 fromKnowledge: answer.fromKnowledge, createdAt: .now, kind: answer.kind))
                 onAnswer()
+            } catch SummaryEndpoint.ResponseError.empty {
+                // An empty reply is the model having nothing to add, not a failure.
+                lastError = nil
             } catch {
                 lastError = error.localizedDescription
                 AudioLog.write("answer failed: \(error.localizedDescription)")
@@ -174,7 +177,7 @@ final class Answerer {
                                      knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
         guard let request = endpoint.request(apiKey: summarizer.apiKey,
                                              system: PolishPrompt.system(language: language, role: role, extra: instructions),
-                                             user: user, maxTokens: 300) else { return }
+                                             user: user, maxTokens: 800) else { return }
         working = true
         Task {
             defer { working = false }
@@ -185,6 +188,9 @@ final class Answerer {
                 t.answers.append(QuestionAnswer(id: id, question: answer.text, answer: text,
                                                 fromKnowledge: false, createdAt: .now, kind: "polish"))
                 onAnswer()
+            } catch SummaryEndpoint.ResponseError.empty {
+                // An empty reply is the model having nothing to add, not a failure.
+                lastError = nil
             } catch {
                 lastError = error.localizedDescription
                 AudioLog.write("polish failed: \(error.localizedDescription)")

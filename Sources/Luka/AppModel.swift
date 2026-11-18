@@ -806,7 +806,13 @@ final class AppModel {
             : mode == .twoWay ? languageB : target
         switch summarizer.language {
         case "": return OutputLanguage(Self.englishName(translated))
-        case "guide": return OutputLanguage(Self.englishName(translated), spoken: Self.englishName(spokenLanguage))
+        case "guide":
+            // Explain in the language captions translate into (also remembered while only transcribing);
+            // if that is the spoken language too, fall back to Chinese, or English when Chinese is spoken.
+            let spoken = spokenLanguage
+            var explain = mode == .twoWay ? languageB : target
+            if explain == spoken { explain = spoken == "zh" ? "en" : "zh" }
+            return OutputLanguage(Self.englishName(explain), spoken: Self.englishName(spoken))
         default: return OutputLanguage(Self.englishName(summarizer.language))
         }
     }
