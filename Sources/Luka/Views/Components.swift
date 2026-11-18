@@ -298,7 +298,7 @@ struct SourceSwitch: View {
                         .frame(width: height * 1.1, height: height - 8)
                         .background {
                             if selected {
-                                Capsule().fill(LukaTheme.gradient)
+                                Capsule().fill(Color.accentColor)
                                     .matchedGeometryEffect(id: "selection", in: selection)
                             }
                         }
