@@ -244,6 +244,34 @@ final class AppModel {
     var transcriptPinned: Bool { didSet { store(transcriptPinned, "transcriptPinned") } }
     /// Light or dark for the transcript window, or the system's choice.
     var windowAppearance: WindowAppearance { didSet { store(windowAppearance.rawValue, "windowAppearance") } }
+    /// Whether macOS itself is in dark mode, kept current so System can always be resolved to light or dark.
+    private(set) var systemIsDark = AppModel.readSystemDark()
+    @ObservationIgnored private var themeObserver: NSObjectProtocol?
+
+    /// The transcript window's color scheme, always light or dark: never left for the window to work out,
+    /// so AppKit's chrome and SwiftUI's content can't disagree.
+    var transcriptColorScheme: ColorScheme {
+        switch windowAppearance {
+        case .light: .light
+        case .dark: .dark
+        case .system: systemIsDark ? .dark : .light
+        }
+    }
+
+    private nonisolated static func readSystemDark() -> Bool {
+        UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+    }
+
+    private func watchSystemTheme() {
+        themeObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main
+        ) { [weak self] _ in
+            // The new setting lands a moment after the notification.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                MainActor.assumeIsolated { self?.systemIsDark = AppModel.readSystemDark() }
+            }
+        }
+    }
     var presenterFontSize: Double { didSet { store(presenterFontSize, "presenterFontSize") } }
 
     var showsInDock: Bool { didSet { store(showsInDock, "showsInDock"); applyActivationPolicy() } }
@@ -354,6 +382,7 @@ final class AppModel {
             }
         }
         answerer.onEnabledChange = { [weak self] in self?.answersChanged() }
+        watchSystemTheme()
         answerer.onAnswer = { [weak self] in
             guard let self else { return }
             // A fresh answer is what the reader wants to see next.

@@ -20,7 +20,10 @@ struct TranscriptWindow: View {
         }
         .frame(minWidth: 560, minHeight: 360)
         .tint(LukaTheme.accent)
-        .background(WindowConfigurator(pinned: model.transcriptPinned, appearance: model.windowAppearance))
+        // Light or dark is set twice, to the same answer: on the window for AppKit's sidebar, toolbar and
+        // backgrounds, and in the environment for SwiftUI's text and colors.
+        .environment(\.colorScheme, model.transcriptColorScheme)
+        .background(WindowConfigurator(pinned: model.transcriptPinned, colorScheme: model.transcriptColorScheme))
         .onAppear { model.transcriptVisible = true }
         .onDisappear { model.transcriptVisible = false }
     }
@@ -898,28 +901,28 @@ enum WindowAppearance: String, CaseIterable {
         }
     }
 
-    var nsAppearance: NSAppearance? {
-        switch self {
-        case .system: nil
-        case .light: NSAppearance(named: .aqua)
-        case .dark: NSAppearance(named: .darkAqua)
-        }
-    }
 }
 
 struct WindowConfigurator: NSViewRepresentable {
     let pinned: Bool
-    var appearance: WindowAppearance = .system
+    var colorScheme: ColorScheme = .light
 
     func makeNSView(context: Context) -> NSView { NSView() }
 
     func updateNSView(_ view: NSView, context: Context) {
+        let pinned = pinned
+        let name: NSAppearance.Name = colorScheme == .dark ? .darkAqua : .aqua
         DispatchQueue.main.async {
             guard let window = view.window else { return }
             window.level = pinned ? .floating : .normal
             window.collectionBehavior = pinned ? [.canJoinAllSpaces, .fullScreenAuxiliary] : [.fullScreenPrimary]
-            // Set on the window itself, so going back to System follows the system again at once.
-            window.appearance = appearance.nsAppearance
+            guard window.appearance?.name != name else { return }
+            window.appearance = NSAppearance(named: name)
+            // Redraw everything, the window's own background included, in the new appearance.
+            window.backgroundColor = .windowBackgroundColor
+            window.contentView?.superview?.needsDisplay = true
+            window.contentView?.needsLayout = true
+            window.invalidateShadow()
         }
     }
 }
