@@ -395,3 +395,41 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.system(language: "English").contains("Write in English."))
     }
 }
+
+
+@MainActor
+@Suite struct PolishTests {
+    @Test func finishedAnswerWaitsForThemOrAPause() {
+        let t = Transcript()
+        t.ingest(tokens([("Tell me about a project you led.", true, nil), ("<end>", true, nil)]), channel: .them)
+        t.ingest(tokens([("So um I led the, the pricing model project at TikTok where we", true, nil), ("<end>", true, nil)]), channel: .me)
+        t.ingest(tokens([("we cut the churn by like twelve percent using uplift models.", true, nil), ("<end>", true, nil)]), channel: .me)
+        // Still talking for all we know: nothing yet.
+        #expect(t.finishedAnswer(handled: [], now: .now) == nil)
+        // A pause ends it.
+        let paused = t.finishedAnswer(handled: [], now: .now.addingTimeInterval(10))
+        #expect(paused?.ids.count == 2 && paused?.question == "Tell me about a project you led.")
+        #expect(paused?.text.hasPrefix("So um I led") == true)
+        // Them speaking ends it too, and a handled answer isn't returned again.
+        t.ingest(tokens([("Interesting.", true, nil), ("<end>", true, nil)]), channel: .them)
+        let done = t.finishedAnswer(handled: [])
+        #expect(done != nil)
+        #expect(t.finishedAnswer(handled: Set(done!.ids)) == nil)
+    }
+
+    @Test func shortRepliesArentPolished() {
+        let t = Transcript()
+        t.ingest(tokens([("Can you hear me?", true, nil), ("<end>", true, nil)]), channel: .them)
+        t.ingest(tokens([("Yes, I can.", true, nil), ("<end>", true, nil)]), channel: .me)
+        t.ingest(tokens([("Great.", true, nil), ("<end>", true, nil)]), channel: .them)
+        #expect(t.finishedAnswer(handled: []) == nil)
+    }
+
+    @Test func promptAndParse() {
+        let p = PolishPrompt.system(language: OutputLanguage("Simplified Chinese", spoken: "English"), role: "Data Scientist")
+        #expect(p.contains("a Data Scientist position") && p.contains("explanations in Simplified Chinese"))
+        #expect(PolishPrompt.parse("SKIP") == nil)
+        #expect(PolishPrompt.parse("I led the pricing project.\n- like → (drop)") != nil)
+        #expect(PolishPrompt.user(question: "Q?", answer: "A", knowledge: "").contains("<question>\nQ?"))
+    }
+}

@@ -453,6 +453,8 @@ private struct SummarySettings: View {
                     }
                 }
                 .disabled(!answerer.enabled)
+                Toggle(tr("Polish my answers"), isOn: $answerer.polishes)
+                    .disabled(!answerer.enabled)
                 TextField(tr("Extra instructions"), text: $answerer.instructions,
                           prompt: Text(tr("Optional, e.g. “Answer in first person, as a candidate for an actuarial analyst role.”")), axis: .vertical)
                     .lineLimit(2...5)
@@ -460,7 +462,7 @@ private struct SummarySettings: View {
             } header: {
                 Text(tr("Answers"))
             } footer: {
-                Text(tr("Lecture mode answers nothing. Meeting mode answers only factual or technical questions. Interview mode answers the questions an interviewer asks for the role above (technical, case, behavioral, experience, motivation), and suggests questions to ask back; add your resume and the job description to the knowledge base. With Me / Them on, your own questions are never answered."))
+                Text(tr("Lecture mode answers nothing. Meeting mode answers only factual or technical questions. Interview mode answers the questions an interviewer asks for the role above (technical, case, behavioral, experience, motivation), and suggests questions to ask back; add your resume and the job description to the knowledge base. With Me / Them on, your own questions are never answered.") + " " + tr("Polish my answers: in Interview mode with Me / Them, after you finish an answer, a smoother way to say it in the language you spoke, plus up to three quick fixes (grammar, natural phrasing, getting back to the question, a closing line, a number to add)."))
             }
             .onChange(of: answerer.enabled) {
                 if answerer.enabled {

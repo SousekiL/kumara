@@ -330,11 +330,12 @@ private struct AnswerCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: fontSize * 0.55) {
-            Text(Questions.lastSentence(item.question) ?? item.question)
+            // For a polish, the question line is what I said; show its start, not its last sentence.
+            Text(item.kind == "polish" ? tr("You said") + ": " + item.question : Questions.lastSentence(item.question) ?? item.question)
                 .font(LukaFont.font(family, size: max(11, fontSize - 1), weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineSpacing(fontSize * 0.2)
-                .lineLimit(3)
+                .lineLimit(item.kind == "polish" ? 2 : 3)
                 .fixedSize(horizontal: false, vertical: true)
                 .help(item.question)
             SummaryText(markdown: item.answer, fontSize: fontSize, family: family)
@@ -345,9 +346,11 @@ private struct AnswerCard: View {
                         .padding(.vertical, 1)
                         .background(.quaternary, in: .capsule)
                 }
-                Label(item.fromKnowledge ? tr("From your knowledge base") : tr("Model’s own knowledge"),
-                      systemImage: item.fromKnowledge ? "books.vertical" : "sparkles")
-                Text(verbatim: "·")
+                if item.kind != "polish" {
+                    Label(item.fromKnowledge ? tr("From your knowledge base") : tr("Model’s own knowledge"),
+                          systemImage: item.fromKnowledge ? "books.vertical" : "sparkles")
+                    Text(verbatim: "·")
+                }
                 Text(item.createdAt.formatted(date: .omitted, time: .shortened))
                 Spacer()
                 Button(action: copy) { Image(systemName: "doc.on.doc") }
@@ -399,6 +402,7 @@ enum QuestionKind {
         case "experience": tr("Experience")
         case "motivation": tr("Motivation")
         case "reverse": tr("Your questions")
+        case "polish": tr("Polish")
         default: kind
         }
     }

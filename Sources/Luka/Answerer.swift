@@ -30,6 +30,8 @@ final class Answerer {
     var instructions: String { didSet { defaults.set(instructions, forKey: "answers.instructions") } }
     /// The job being interviewed for, which tells Interview mode what counts as a technical question.
     var role: String { didSet { defaults.set(role, forKey: "answers.role") } }
+    /// In Interview mode with Me / Them: a smoother version of each of my answers, and quick fixes.
+    var polishes: Bool { didSet { defaults.set(polishes, forKey: "answers.polish") } }
     static let rolePresets = ["Data Scientist", "Data Analyst", "Actuarial Analyst", "AI Product Manager"]
     /// The user's own notes, part of the knowledge base.
     var notes: String {
@@ -59,6 +61,7 @@ final class Answerer {
         enabled = d.bool(forKey: "answers.enabled")
         instructions = d.string(forKey: "answers.instructions") ?? ""
         role = d.string(forKey: "answers.role") ?? "Data Scientist"
+        polishes = d.object(forKey: "answers.polish") as? Bool ?? true
         notes = d.string(forKey: "answers.notes") ?? ""
         panelShowsAnswers = d.bool(forKey: "answers.panelShown")
         sources = (d.stringArray(forKey: "answers.sources") ?? []).map { Source(path: $0) }
@@ -126,7 +129,12 @@ final class Answerer {
             handled = Set(t.lines.map(\.id))
         }
         let mode = summarizer.mode
-        guard !working, let waiting = t.waitingQuestion(handled: handled, channelsOnly: channelsOnly, eagerness: mode.eagerness) else { return }
+        guard !working else { return }
+        guard let waiting = t.waitingQuestion(handled: handled, channelsOnly: channelsOnly, eagerness: mode.eagerness) else {
+            // Questions come first; with none waiting, look at the answer I just gave.
+            if polishes, mode == .interview, channelsOnly { polish(t, summarizer: summarizer, language: language) }
+            return
+        }
         handled.formUnion(waiting.all)
         let line = waiting.line
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
@@ -151,6 +159,33 @@ final class Answerer {
             } catch {
                 lastError = error.localizedDescription
                 AudioLog.write("answer failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// A smoother way to say the answer I just finished, and quick fixes. Interview mode with Me / Them only.
+    private func polish(_ t: Transcript, summarizer: Summarizer, language: OutputLanguage) {
+        guard let answer = t.finishedAnswer(handled: handled) else { return }
+        handled.formUnion(answer.ids)
+        let endpoint = summarizer.endpoint
+        let user = PolishPrompt.user(question: answer.question, answer: answer.text,
+                                     knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
+        guard let request = endpoint.request(apiKey: summarizer.apiKey,
+                                             system: PolishPrompt.system(language: language, role: role, extra: instructions),
+                                             user: user, maxTokens: 600) else { return }
+        working = true
+        Task {
+            defer { working = false }
+            do {
+                let reply = try await Summarizer.send(request, endpoint: endpoint)
+                lastError = nil
+                guard let text = PolishPrompt.parse(reply), let id = answer.ids.last else { return }
+                t.answers.append(QuestionAnswer(id: id, question: answer.text, answer: text,
+                                                fromKnowledge: false, createdAt: .now, kind: "polish"))
+                onAnswer()
+            } catch {
+                lastError = error.localizedDescription
+                AudioLog.write("polish failed: \(error.localizedDescription)")
             }
         }
     }
