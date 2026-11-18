@@ -129,6 +129,8 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var answers: [QuestionAnswer]?
     /// The user's tags; absent in sessions saved before tags existed, or with none.
     public var tags: [String]? = nil
+    /// The assistant mode the session was held in; absent in older sessions.
+    public var mode: String? = nil
 }
 
 @MainActor
@@ -156,6 +158,8 @@ public final class Transcript: Identifiable {
     public var answers: [QuestionAnswer] = [] { didSet { if answers != oldValue { touch() } } }
     /// The user's tags, for finding sessions again.
     public var tags: [String] = [] { didSet { if tags != oldValue { touch() } } }
+    /// The assistant mode the session was held in, last one used.
+    public var mode: AssistantMode? { didSet { if mode != oldValue { touch() } } }
 
     /// The line still growing, per channel; "" is the single stream of the normal modes.
     @ObservationIgnored private var openLines: [String: Int] = [:]
@@ -213,6 +217,7 @@ public final class Transcript: Identifiable {
         summary = s.summary
         answers = s.answers ?? []
         tags = s.tags ?? []
+        mode = s.mode.flatMap(AssistantMode.init(rawValue:))
         // Continue numbering Them streams past the saved ones, so new people aren't taken for earlier ones.
         themEpoch = max(themEpoch, speakers.keys.filter { $0.label.hasPrefix(Channel.themPrefix) }.map(\.epoch).max() ?? 0)
     }
@@ -222,7 +227,7 @@ public final class Transcript: Identifiable {
                            speakers: speakerOrder.compactMap { speakers[$0] }, speakerOrder: speakerOrder,
                            epoch: epoch, nextLineID: nextLineID, nextOrdinal: nextOrdinal, nextColor: nextColor,
                            summary: summary, answers: answers.isEmpty ? nil : answers,
-                           tags: tags.isEmpty ? nil : tags)
+                           tags: tags.isEmpty ? nil : tags, mode: mode?.rawValue)
     }
 
     /// Stamps the session with the time listening first starts.

@@ -52,6 +52,8 @@ final class AppModel {
         didSet {
             store(assistantMode.rawValue, "assistant.mode")
             if assistantMode != oldValue { applyScene() }
+            // The live session remembers its mode, for the panel and the export afterwards.
+            if transcript.hasStarted { transcript.mode = assistantMode }
         }
     }
     @ObservationIgnored private var summaryTimer: Timer?
@@ -469,6 +471,7 @@ final class AppModel {
             if answerer.enabled { answerer.reload() }
         }
         transcript.markStarted()
+        transcript.mode = assistantMode
         Task {
             do {
                 try await audio.start(audioSource, microphone: microphone, feedFile: feedFile, separate: splitsBySource)

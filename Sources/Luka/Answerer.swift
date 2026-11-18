@@ -211,9 +211,11 @@ final class Answerer {
                 lastError = nil
                 let item: QuestionAnswer
                 if start.polish {
-                    guard let text = PolishPrompt.parse(reply) else { return }
-                    item = QuestionAnswer(id: start.id, question: start.question, answer: text,
-                                          fromKnowledge: false, createdAt: .now, kind: "polish")
+                    // Kept even with nothing to fix: whether the answer was complete feeds the question tracker.
+                    guard let feedback = PolishPrompt.parse(reply) else { return }
+                    item = QuestionAnswer(id: start.id, question: start.question, answer: feedback.fix ?? "",
+                                          fromKnowledge: false, createdAt: .now, kind: "polish",
+                                          status: feedback.status, used: feedback.used, better: feedback.better)
                 } else {
                     guard let answer = AnswerPrompt.parse(reply) else { return }
                     item = QuestionAnswer(id: start.id, question: start.question, answer: answer.text,

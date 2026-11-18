@@ -12,14 +12,24 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
     public var createdAt: Date
     /// In interviews, the kind of question: technical, case, behavioral, experience, motivation or reverse.
     public var kind: String?
+    /// For a polish: whether my answer covered the question ("complete" or "partial").
+    public var status: String?
+    /// For a polish: the story, project or number my answer relied on.
+    public var used: String?
+    /// For a polish: the smoother version, kept for the review afterwards.
+    public var better: String?
 
-    public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date, kind: String? = nil) {
+    public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date, kind: String? = nil,
+                status: String? = nil, used: String? = nil, better: String? = nil) {
         self.id = id
         self.question = question
         self.answer = answer
         self.fromKnowledge = fromKnowledge
         self.createdAt = createdAt
         self.kind = kind
+        self.status = status
+        self.used = used
+        self.better = better
     }
 }
 
@@ -135,7 +145,9 @@ public enum AnswerPrompt {
 
     public static func system(language: OutputLanguage, mode: AssistantMode = .meeting, role: String = "", extra: String = "") -> String {
         let body: String
-        if let spoken = language.spoken {
+        if mode == .interview {
+            body = interviewBody(language)
+        } else if let spoken = language.spoken {
             // Guide: the reader's own language points to what matters; the spoken language gives words to borrow.
             body = """
             After the header lines, exactly this and nothing more:
@@ -178,6 +190,20 @@ public enum AnswerPrompt {
     }
 
     /// `previous` are the questions answered most recently, so a restatement isn't answered twice.
+    /// Interview answers are a skeleton to speak from, not a script: the gist, three cues, and one anchor
+    /// from the candidate's own material, so they can glance, then say it in their own words.
+    static func interviewBody(_ language: OutputLanguage) -> String {
+        let spoken = language.spoken ?? language.explain
+        return """
+        After the header lines, exactly this and nothing more:
+        Line 1: the gist, at most 15 words of \(language.explain) (about 25 characters in Chinese): what the answer is or how to approach it. Not a sentence to read out.
+        Then 2 or 3 cue lines, starting with ①, ② and ③, each at most 8 words of \(spoken): the skeleton for this type of question (see below). Cues to speak from, not sentences to read out. Technical terms stay in \(spoken).
+        Then, when it applies, one anchor line starting with "⚓ ": the candidate's own project, story or number from the knowledge base that fits, with the file it came from in brackets, at most 15 words, e.g. ⚓ [projects.md] Search ranking holdout: +2.1% sessions. Copy names and numbers exactly.
+        For behavioral, experience and motivation questions the anchor line is required: when nothing in the knowledge base fits, write exactly "⚓ —". For other types, leave it out unless something clearly fits.
+        When the question has several parts, give one cue per part, in order.
+        """
+    }
+
     public static func user(question: String, asker: String, conversation: String, knowledge: String, previous: [String] = []) -> String {
         var out = ""
         if !knowledge.isEmpty {

@@ -413,7 +413,9 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let summary = SummaryPrompt.system(language: guide, mode: .meeting)
         #expect(summary.contains("Write in Simplified Chinese") && summary.contains("keep in English, exactly as said"))
         let answers = AnswerPrompt.system(language: guide, mode: .interview, role: "Data Scientist")
-        #expect(answers.contains("words of Simplified Chinese") && answers.contains("phrase in English to borrow"))
+        #expect(answers.contains("words of Simplified Chinese") && answers.contains("each at most 8 words of English"))
+        let meeting = AnswerPrompt.system(language: guide, mode: .meeting)
+        #expect(meeting.contains("phrase in English to borrow"))
         #expect(SummaryPrompt.system(language: guide, mode: .lecture).contains("keep in English"))
     }
 
@@ -454,9 +456,15 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
 
     @Test func promptAndParse() {
         let p = PolishPrompt.system(language: OutputLanguage("Simplified Chinese", spoken: "English"), role: "Data Scientist")
-        #expect(p.contains("a Data Scientist position") && p.contains("Bullets in Simplified Chinese"))
+        #expect(p.contains("a Data Scientist position") && p.contains("The fix in Simplified Chinese"))
         #expect(PolishPrompt.parse("SKIP") == nil)
-        #expect(PolishPrompt.parse("I led the pricing project.\n- like → (drop)") != nil)
+        let f = PolishPrompt.parse("STATUS: partial\nUSED: search ranking holdout\nFIX: Add now: \"It lifted sessions 2%.\"\nBETTER: I led the pricing\nproject end to end.")
+        #expect(f?.status == "partial" && f?.used == "search ranking holdout" && f?.fix?.hasPrefix("Add now") == true)
+        #expect(f?.better == "I led the pricing project end to end.")
+        let clean = PolishPrompt.parse("STATUS: complete\nUSED: -\nFIX: -\nBETTER: Fine.")
+        #expect(clean?.fix == nil && clean?.used == nil && clean?.status == "complete")
+        // An old-style reply still shows as a fix.
+        #expect(PolishPrompt.parse("I led the pricing project.\n- like → (drop)")?.fix?.hasPrefix("I led") == true)
         #expect(PolishPrompt.user(question: "Q?", answer: "A", knowledge: "").contains("<question>\nQ?"))
     }
 }
@@ -487,8 +495,8 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
 
     @Test func guideAnswersPointInChineseAndQuoteEnglish() {
         let p = AnswerPrompt.system(language: OutputLanguage("Simplified Chinese", spoken: "English"), mode: .interview, role: "Data Scientist")
-        #expect(p.contains("at most 15 words of Simplified Chinese") && p.contains("short phrase in English to borrow"))
-        #expect(p.contains("No full answer paragraph") && p.contains("Never show your reasoning"))
+        #expect(p.contains("at most 15 words of Simplified Chinese") && p.contains("starting with ①, ② and ③"))
+        #expect(p.contains("⚓ —") && p.contains("north-star metric") && p.contains("Never show your reasoning"))
         let plain = AnswerPrompt.system(language: "English")
         #expect(plain.contains("Write in English.") && !plain.contains("to borrow"))
     }
@@ -533,8 +541,9 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.partial("SOURCE: model\nSK") == nil)
         let p = AnswerPrompt.partial("SOURCE: knowledge\nTYPE: technical\n先给结论")
         #expect(p?.text == "先给结论" && p?.fromKnowledge == true && p?.kind == "technical")
-        #expect(PolishPrompt.partial("S") == nil)
-        #expect(PolishPrompt.partial("Smoother: I led") == "Smoother: I led")
+        #expect(PolishPrompt.partial("STATUS: partial\nUSED: -") == nil)
+        #expect(PolishPrompt.partial("STATUS: partial\nUSED: -\nFIX: -") == nil)
+        #expect(PolishPrompt.partial("STATUS: partial\nUSED: -\nFIX: Add the number") == "Add the number")
     }
 
     @Test func modesSetTheScene() {
@@ -601,5 +610,24 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         t.tags = ["面试", "Airwallex"]
         #expect(Transcript(snapshot: t.snapshot).tags == ["面试", "Airwallex"])
         #expect(Transcript().snapshot.tags == nil)
+    }
+}
+
+@Suite struct QuestionLogTests {
+    @Test @MainActor func polishesBelongToTheQuestionBeforeThem() {
+        let t = Transcript()
+        let now = Date.now
+        t.answers = [
+            QuestionAnswer(id: 1, question: "Tell me about a conflict?", answer: "a", fromKnowledge: true, createdAt: now, kind: "behavioral"),
+            QuestionAnswer(id: 2, question: "my answer", answer: "", fromKnowledge: false, createdAt: now, kind: "polish", status: "complete", used: "search holdout"),
+            QuestionAnswer(id: 3, question: "p-value vs CI?", answer: "b", fromKnowledge: false, createdAt: now, kind: "technical"),
+            QuestionAnswer(id: 4, question: "Questions for us?", answer: "c", fromKnowledge: false, createdAt: now, kind: "reverse"),
+        ]
+        let log = t.questionLog
+        #expect(log.count == 2)
+        #expect(log[0].status == "complete" && log[0].used == ["search holdout"])
+        #expect(log[1].status == nil)
+        t.mode = .interview
+        #expect(Transcript(snapshot: t.snapshot).mode == .interview)
     }
 }

@@ -571,5 +571,12 @@ enum Strings {
         "The transcripts will be removed from this Mac.": "这些转写会从这台 Mac 上删除。",
         "e.g. interview, Airwallex": "例如：面试、Airwallex",
         "⌘-click or ⇧-click in the list to change the selection.": "在列表里按住 ⌘ 或 ⇧ 点击可以增减选择。",
+        "Answered": "已答全",
+        "Each interview question shows here with how your answer went and the story you used.": "每道面试题会列在这里，附上你答得怎样、用了哪段经历。",
+        "Missed a part": "漏了一部分",
+        "Not reviewed yet": "还没复盘",
+        "Nothing in your knowledge base fits: pick a story of this kind.": "知识库里没有合适的素材：挑一个这类的经历来讲。",
+        "Questions so far": "已问到的问题",
+        "Used": "用了",
     ]
 }

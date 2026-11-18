@@ -128,6 +128,12 @@ Pick **Lecture**, **Meeting** or **Interview** at the top of the summary column,
 
 Settings › Assistant › **This conversation** holds the role you're interviewing for and one note about this conversation, read by both the summary and the answers. Settings › **Knowledge** holds what stays the same: files, folders and your own notes.
 
+## Interview answers and the question tracker
+
+In Interview mode an answer is a skeleton to speak from, not a script: a one-line gist, then up to three numbered cues shaped by the question type (behavioral: situation → what I did → result with a number; product or metric case: clarify → north star and guardrails → approach; technical: answer → when to use → pitfall), then a ⚓ anchor line naming your own project, story or number from the knowledge base and the file it came from. Nothing is invented: with no match, the anchor says so.
+
+After you answer, polishing shows at most one fix to use in your next turn. Whether the answer covered the question, the story it used and a smoother version are kept for the review afterwards. The Summary tab lists every question so far with ✓ answered / ⚠ missed a part and the story used, built from the answers themselves at no extra cost. Each session remembers its mode.
+
 ## Sessions: tags and batch actions
 
 Right-click a session › **Tags…** to tag it; tags show under each session and in a bar above the list, where choosing one lists only sessions with it. ⌘- or ⇧-click selects several sessions: right-click for **Tag**, **Copy** or **Delete** on all of them at once, or use the buttons in the window.

@@ -80,11 +80,16 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
 
             How to answer an interview question:
             - Right after the SOURCE line, add a line "TYPE: technical", "TYPE: case", "TYPE: behavioral", "TYPE: experience", "TYPE: motivation" or "TYPE: reverse".
-            - Words to say are in the first person, as the candidate would say them.
-            - technical: the correct answer in plain words first; hints with the key terms, formulas or caveats worth mentioning.
-            - case: hints that give a structure: clarify the goal, the metrics to look at, hypotheses, how to test them.
-            - behavioral and experience: a situation, action, result outline drawn from the knowledge base. If it has nothing that fits, say which kind of story to pick and how to structure it; never invent one.
-            - motivation: from the knowledge base, connecting the candidate's background to this role.
+            - Cues are in the first person where they are words to say ("I re-ran it with a holdout").
+            - The skeleton for each type, one cue each:
+              technical: ① the answer in one plain sentence ② when to use it ③ the pitfall or caveat worth mentioning.
+              case (product or metric): ① clarify the goal ② a north-star metric and two guardrails ③ the approach (segments, funnel, test) and the trade-off.
+              case (a metric moved): ① check the definition and the data ② internal, external or logging causes ③ the segments to cut and the next step.
+              behavioral: ① situation and task in one line ② what I did, "I" not "we" ③ the result with a number, and the lesson.
+              experience: ① the problem ② my role and method ③ the impact, with a number.
+              motivation: ① and ② two reasons tied to this company or role, from the candidate's background.
+              reverse: ①②③ three sharp questions to ask, each at most 12 words.
+            - Never invent the candidate's stories, projects or numbers. With nothing in the knowledge base, the cues say what kind of story to pick and the anchor is "⚓ —".
             """
         }
     }

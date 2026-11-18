@@ -140,7 +140,29 @@ struct SummaryPanel: View {
         }
     }
 
+    /// The mode this session is in: the current mode while it's live, the saved one afterwards.
+    /// Older sessions without one count as interviews when they have typed interview answers.
+    private var sessionMode: AssistantMode? {
+        if model.isLive(transcript) { return model.assistantMode }
+        return transcript.mode ?? (transcript.answers.contains { $0.kind != nil } ? .interview : nil)
+    }
+
     @ViewBuilder private var summary: some View {
+        let log = sessionMode == .interview ? transcript.questionLog : []
+        if !log.isEmpty || (sessionMode == .interview && transcript.summary == nil && !summarizer.enabled) {
+            // In an interview the summary tab leads with the questions asked and how each went;
+            // it costs nothing, since it is built from the answers and polishes already made.
+            VStack(alignment: .leading, spacing: 16) {
+                QuestionTracker(log: log, fontSize: model.assistant.fontSize, family: model.fontFamily)
+                if transcript.summary != nil { Divider() }
+                notes
+            }
+        } else {
+            notes
+        }
+    }
+
+    @ViewBuilder private var notes: some View {
         if let summary = transcript.summary {
             VStack(alignment: .leading, spacing: model.assistant.fontSize * 0.9) {
                 if let context = summary.context, !context.isEmpty {
@@ -161,7 +183,9 @@ struct SummaryPanel: View {
         } else if !model.assistant.isConfigured {
             setupHint(tr("Pick a model for the summary in Settings › Assistant."))
         } else if !summarizer.enabled {
-            EmptyNote(symbol: "text.alignleft", text: tr("The summary is off. Turn it on with the switch above."))
+            if sessionMode != .interview {
+                EmptyNote(symbol: "text.alignleft", text: tr("The summary is off. Turn it on with the switch above."))
+            }
         } else {
             EmptyNote(symbol: "list.bullet.rectangle", text: tr("Notes appear here a few sentences in, and keep growing as the conversation goes on."))
         }
@@ -233,8 +257,11 @@ struct SummaryPanel: View {
 
     /// The session's answers, newest first, led by the one being written.
     private var answerRows: [AnswerRow] {
-        var rows = transcript.answers.reversed().map(AnswerRow.init)
-        if let live = answerer.live, live.session == transcript.id, !rows.contains(where: { $0.id == live.id }) {
+        // A polish with nothing to fix only feeds the question tracker.
+        var rows = transcript.answers.reversed().filter { !($0.kind == "polish" && $0.answer.isEmpty) }.map(AnswerRow.init)
+        // A polish shows only once it has a fix; most of its reply is for the tracker and the review.
+        if let live = answerer.live, live.session == transcript.id, !live.polish || live.text != nil,
+           !rows.contains(where: { $0.id == live.id }) {
             rows.insert(AnswerRow(live), at: 0)
         }
         return rows
@@ -433,7 +460,7 @@ struct AnswerText: View {
     /// The Chinese font, so a change redraws the text.
     var cjk: String = LukaFont.cjkFamily
 
-    private enum Kind { case gist, bullet, text }
+    private enum Kind { case gist, bullet, cue(String), anchor, text }
 
     private var lines: [(kind: Kind, text: String)] {
         var sawGist = false
@@ -443,6 +470,15 @@ struct AnswerText: View {
             for marker in ["- ", "* ", "• "] where line.hasPrefix(marker) {
                 sawGist = true
                 return (.bullet, String(line.dropFirst(marker.count)))
+            }
+            // An interview skeleton: numbered cues, then the anchor from the reader's own material.
+            if let first = line.first, "①②③④⑤".contains(first) {
+                sawGist = true
+                return (.cue(String(first)), String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
+            }
+            if line.hasPrefix("⚓") {
+                sawGist = true
+                return (.anchor, String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
             }
             if !sawGist {
                 sawGist = true
@@ -472,6 +508,16 @@ struct AnswerText: View {
                                 .lineSpacing(fontSize * 0.35)
                         }
                         .font(LukaFont.font(family, size: fontSize))
+                    case .cue(let mark):
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(verbatim: mark)
+                                .foregroundStyle(LukaTheme.accent)
+                            Text(Self.styled(line.text))
+                                .lineSpacing(fontSize * 0.3)
+                        }
+                        .font(LukaFont.font(family, size: fontSize))
+                    case .anchor:
+                        AnchorLine(text: line.text, fontSize: fontSize, family: family)
                     case .text:
                         Text(Self.styled(line.text))
                             .font(LukaFont.font(family, size: fontSize))
@@ -503,6 +549,106 @@ struct AnswerText: View {
             }
         }
         return text
+    }
+}
+
+/// The answer's anchor: the reader's own project, story or number, with the file it came from.
+private struct AnchorLine: View {
+    let text: String
+    let fontSize: Double
+    let family: String
+
+    var body: some View {
+        let none = text.isEmpty || text == "—" || text == "-"
+        let file = Self.file(in: text)
+        let rest = Self.rest(of: text)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "pin.fill")
+                .font(.system(size: max(9, fontSize - 4)))
+                .foregroundStyle(none ? AnyShapeStyle(.tertiary) : AnyShapeStyle(LukaTheme.cyan))
+            if none {
+                Text(tr("Nothing in your knowledge base fits: pick a story of this kind."))
+                    .foregroundStyle(.secondary)
+            } else {
+                (file.map { Text(verbatim: $0 + "  ").foregroundStyle(.tertiary) } ?? Text(verbatim: ""))
+                    + Text(AnswerText.styled(rest))
+            }
+        }
+        .font(LukaFont.font(family, size: max(11, fontSize - 1)))
+        .lineSpacing(fontSize * 0.25)
+        .padding(.vertical, 5)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(LukaTheme.cyan.opacity(none ? 0.04 : 0.09), in: .rect(cornerRadius: 7))
+    }
+
+    /// "[projects.md] Search holdout": the file name in front, read as a quiet label.
+    static func file(in text: String) -> String? {
+        guard text.hasPrefix("["), let close = text.firstIndex(of: "]") else { return nil }
+        return String(text[text.index(after: text.startIndex)..<close])
+    }
+
+    static func rest(of text: String) -> String {
+        guard text.hasPrefix("["), let close = text.firstIndex(of: "]") else { return text }
+        return String(text[text.index(after: close)...]).trimmingCharacters(in: .whitespaces)
+    }
+}
+
+/// Interview questions in order, each with whether my answer covered it and what I used,
+/// so the same story isn't told twice and "as I mentioned earlier" stays true.
+private struct QuestionTracker: View {
+    let log: [QuestionLogEntry]
+    let fontSize: Double
+    let family: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(tr("Questions so far"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if log.isEmpty {
+                Text(tr("Each interview question shows here with how your answer went and the story you used."))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+            ForEach(Array(log.enumerated()), id: \.element.id) { index, entry in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(verbatim: "\(index + 1)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 16, alignment: .trailing)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            if let kind = entry.question.kind { KindTag(kind: kind) }
+                            status(entry.status)
+                        }
+                        .font(.caption)
+                        Text(Questions.lastSentence(entry.question.question) ?? entry.question.question)
+                            .font(LukaFont.font(family, size: max(11, fontSize - 1)))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .help(entry.question.question)
+                        if !entry.used.isEmpty {
+                            Text(tr("Used") + ": " + entry.used.joined(separator: " · "))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func status(_ status: String?) -> some View {
+        switch status {
+        case "complete":
+            Label(tr("Answered"), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        case "partial":
+            Label(tr("Missed a part"), systemImage: "exclamationmark.circle.fill").foregroundStyle(.orange)
+        default:
+            Label(tr("Not reviewed yet"), systemImage: "circle.dotted").foregroundStyle(.tertiary)
+        }
     }
 }
 
