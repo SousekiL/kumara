@@ -255,17 +255,17 @@ private struct DockPopup: View {
             .background {
                 // Same black and opacity as the Dark caption window.
                 if dark {
-                    RoundedRectangle(cornerRadius: 16).fill(.black.opacity(model.captionBackgroundOpacity))
+                    RoundedRectangle(cornerRadius: LukaTheme.floatingRadius).fill(.black.opacity(model.captionBackgroundOpacity))
                 } else {
-                    RoundedRectangle(cornerRadius: 16).fill(.regularMaterial)
+                    RoundedRectangle(cornerRadius: LukaTheme.floatingRadius).fill(.regularMaterial)
                 }
             }
-            .clipShape(.rect(cornerRadius: 16))
+            .clipShape(.rect(cornerRadius: LukaTheme.floatingRadius))
             .overlay {
                 if dark {
-                    RoundedRectangle(cornerRadius: 16).strokeBorder(LukaTheme.floatingEdge, lineWidth: 0.75)
+                    RoundedRectangle(cornerRadius: LukaTheme.floatingRadius).strokeBorder(LukaTheme.floatingEdge, lineWidth: 0.75)
                 } else {
-                    RoundedRectangle(cornerRadius: 16).strokeBorder(.separator)
+                    RoundedRectangle(cornerRadius: LukaTheme.floatingRadius).strokeBorder(.separator)
                 }
             }
             .tint(LukaTheme.accent)

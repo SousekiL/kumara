@@ -551,5 +551,6 @@ enum Strings {
         "Dark mode": "深色",
         "Caption window": "字幕窗口",
         "System follows your Mac’s light or dark setting.": "“跟随系统”会按 Mac 的浅色或深色设置显示。",
+        "Liquid Glass applies to all of Luka, the transcript window’s buttons included. Turn it off for solid, higher-contrast captions and controls.": "Liquid Glass 作用于整个 Luka，包括转写窗口的按钮。关掉后字幕和按钮改为实色、对比更高。",
     ]
 }

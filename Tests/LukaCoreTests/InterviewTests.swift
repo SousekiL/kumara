@@ -560,3 +560,21 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(try openAI.parseStreamBody(Data(#"{"choices":[]}"#.utf8)) == nil)
     }
 }
+
+@Suite struct SourceMemoryTests {
+    @Test func turningOnSwitchesToBothAndRemembers() {
+        let on = SourceMemory.turningOn(current: "system", both: "both", allowed: true)
+        #expect(on.switchTo == "both" && on.remember == "system")
+        // Already both, or three-way mode: nothing to switch or remember.
+        #expect(SourceMemory.turningOn(current: "both", both: "both", allowed: true).switchTo == nil)
+        #expect(SourceMemory.turningOn(current: "system", both: "both", allowed: false).remember == nil)
+    }
+
+    @Test func turningOffPutsBackOnlyWhatItReplaced() {
+        #expect(SourceMemory.turningOff(current: "both", both: "both", remembered: "system") == "system")
+        // Nothing remembered: the user picked both themselves.
+        #expect(SourceMemory.turningOff(current: "both", both: "both", remembered: nil as String?) == nil)
+        // Changed by hand since: leave it.
+        #expect(SourceMemory.turningOff(current: "mic", both: "both", remembered: "system") == nil)
+    }
+}

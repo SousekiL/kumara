@@ -160,7 +160,7 @@ private struct CaptionSettings: View {
                 Text(tr("The Dark style and its opacity also apply to the floating summary and answers card."))
                 + Text(verbatim: " ")
                 + Text(LukaGlassSupport.available
-                       ? tr("Turn off for solid, higher-contrast captions and controls.")
+                       ? tr("Liquid Glass applies to all of Luka, the transcript window’s buttons included. Turn it off for solid, higher-contrast captions and controls.")
                        : tr("Liquid Glass needs macOS 26. Luka uses system materials on this Mac."))
             }
 

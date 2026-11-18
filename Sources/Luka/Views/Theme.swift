@@ -49,11 +49,24 @@ extension View {
                     .strokeBorder(active ? AnyShapeStyle(LukaTheme.activeEdge) : AnyShapeStyle(.primary.opacity(0.08)),
                                   lineWidth: active ? 1 : 0.5)
             }
-            .shadow(color: active ? LukaTheme.accent.opacity(0.18) : .clear, radius: 10, y: 2)
+            .modifier(LukaGlow(on: active))
     }
 
     /// The edge every floating surface shares: captions, the assistant card and its button.
     func lukaFloatingEdge<S: InsettableShape>(_ shape: S) -> some View {
         overlay { shape.strokeBorder(LukaTheme.floatingEdge, lineWidth: 0.75) }
+    }
+}
+
+/// A soft accent glow, only drawn when on, so quiet cards cost nothing extra.
+private struct LukaGlow: ViewModifier {
+    let on: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if on {
+            content.shadow(color: LukaTheme.accent.opacity(0.18), radius: 10, y: 2)
+        } else {
+            content
+        }
     }
 }

@@ -98,6 +98,13 @@ final class AppModel {
         }
     }
     @ObservationIgnored private var switchingSource = false
+
+    /// Changes the source for Me / Them, which reroutes afterwards itself.
+    private func switchSource(to source: AudioSource) {
+        switchingSource = true
+        audioSource = source
+        switchingSource = false
+    }
     /// The source Me / Them replaced with Mac audio + microphone, put back when it goes off,
     /// so leaving Meeting or Interview mode doesn't leave the microphone on.
     private var sourceBeforeSeparating: AudioSource? {
@@ -110,19 +117,14 @@ final class AppModel {
         didSet {
             store(separatesSpeakers, "separatesSpeakers")
             // It only works with both sources, so turning it on picks them, and turning it off puts back what was there.
-            if separatesSpeakers, audioSource != .both, mode != .threeWay {
-                let previous = audioSource
-                switchingSource = true
-                audioSource = .both
-                switchingSource = false
-                sourceBeforeSeparating = previous
-            } else if !separatesSpeakers, let previous = sourceBeforeSeparating {
+            if separatesSpeakers {
+                let on = SourceMemory.turningOn(current: audioSource, both: AudioSource.both, allowed: mode != .threeWay)
+                if let both = on.switchTo { switchSource(to: both) }
+                if let previous = on.remember { sourceBeforeSeparating = previous }
+            } else {
+                let back = SourceMemory.turningOff(current: audioSource, both: AudioSource.both, remembered: sourceBeforeSeparating)
                 sourceBeforeSeparating = nil
-                if audioSource == .both {
-                    switchingSource = true
-                    audioSource = previous
-                    switchingSource = false
-                }
+                if let back { switchSource(to: back) }
             }
             routingChanged()
         }
@@ -266,9 +268,11 @@ final class AppModel {
         themeObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main
         ) { [weak self] _ in
-            // The new setting lands a moment after the notification.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                MainActor.assumeIsolated { self?.systemIsDark = AppModel.readSystemDark() }
+            // The new setting lands a moment after the notification; look again a little later to be sure.
+            for delay in [0.1, 0.6] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    MainActor.assumeIsolated { self?.systemIsDark = AppModel.readSystemDark() }
+                }
             }
         }
     }
