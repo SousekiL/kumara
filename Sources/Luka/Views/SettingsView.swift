@@ -360,7 +360,7 @@ private struct SummarySettings: View {
 
     private static let presets: [Preset] = [
         Preset(name: "OpenAI", provider: .openAI, baseURL: "", model: "gpt-4.1-mini"),
-        Preset(name: "Claude (Anthropic)", provider: .anthropic, baseURL: "", model: "claude-haiku-4-5"),
+        Preset(name: "Claude (Anthropic)", provider: .anthropic, baseURL: "", model: "claude-haiku-5-5"),
         Preset(name: "DeepSeek", provider: .openAI, baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat"),
         Preset(name: "Qwen (DashScope)", provider: .openAI, baseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", model: "qwen-plus"),
         Preset(name: "OpenRouter", provider: .openAI, baseURL: "https://openrouter.ai/api/v1", model: ""),
