@@ -549,5 +549,7 @@ enum Strings {
         "Transcript window": "转写窗口",
         "Light mode": "浅色",
         "Dark mode": "深色",
+        "Caption window": "字幕窗口",
+        "System follows your Mac’s light or dark setting.": "“跟随系统”会按 Mac 的浅色或深色设置显示。",
     ]
 }

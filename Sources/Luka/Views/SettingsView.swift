@@ -154,18 +154,26 @@ private struct CaptionSettings: View {
                 }
                 Toggle(tr("Liquid Glass"), isOn: $model.liquidGlass)
                     .disabled(!LukaGlassSupport.available)
-                Picker(tr("Transcript window"), selection: $model.windowAppearance) {
-                    ForEach(WindowAppearance.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
             } header: {
-                Text(tr("Appearance"))
+                Text(tr("Caption window"))
             } footer: {
                 Text(tr("The Dark style and its opacity also apply to the floating summary and answers card."))
                 + Text(verbatim: " ")
                 + Text(LukaGlassSupport.available
                        ? tr("Turn off for solid, higher-contrast captions and controls.")
                        : tr("Liquid Glass needs macOS 26. Luka uses system materials on this Mac."))
+            }
+
+            // The transcript window is a separate window with its own light or dark choice.
+            Section {
+                Picker(tr("Appearance"), selection: $model.windowAppearance) {
+                    ForEach(WindowAppearance.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text(tr("Transcript window"))
+            } footer: {
+                Text(tr("System follows your Mac’s light or dark setting."))
             }
 
             Section {
