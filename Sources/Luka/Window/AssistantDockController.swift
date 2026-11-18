@@ -17,8 +17,8 @@ final class AssistantDockController: NSObject {
 
     init(model: AppModel) {
         self.model = model
-        button = Self.makePanel(title: "Luka Assistant Button", shadow: false)
-        popup = Self.makePanel(title: "Luka Assistant", shadow: true)
+        button = Self.makePanel(title: "Kumara Assistant Button", shadow: false)
+        popup = Self.makePanel(title: "Kumara Assistant", shadow: true)
         super.init()
 
         let buttonHost = NSHostingView(rootView: LocalizedRoot {

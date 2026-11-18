@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Luka Plus</string>
+	<string>Kumara</string>
 	<key>CFBundleExecutable</key>
 	<string>Luka</string>
 	<key>CFBundleIconFile</key>
@@ -19,7 +19,7 @@
 		<string>zh-Hans</string>
 	</array>
 	<key>CFBundleName</key>
-	<string>Luka Plus</string>
+	<string>Kumara</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -36,10 +36,10 @@
 		<true/>
 	</dict>
 	<key>NSAudioCaptureUsageDescription</key>
-	<string>Luka transcribes and translates the audio your Mac is playing.</string>
+	<string>Kumara transcribes and translates the audio your Mac is playing.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Luka transcribes and translates what your microphone hears.</string>
+	<string>Kumara transcribes and translates what your microphone hears.</string>
 </dict>
 </plist>

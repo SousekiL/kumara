@@ -42,7 +42,7 @@ final class CaptionPanelController: NSObject, NSWindowDelegate {
         panel.animationBehavior = .utilityWindow
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.delegate = self
-        panel.title = "Luka Captions"
+        panel.title = "Kumara Captions"
 
         let host = NSHostingView(rootView: LocalizedRoot { CaptionRoot() }.environment(model))
         host.sizingOptions = []

@@ -17,7 +17,7 @@ struct LukaApp: App {
 
     var body: some Scene {
         let model = delegate.model
-        Window("Luka Plus", id: "transcript") {
+        Window("Kumara", id: "transcript") {
             TranscriptWindow()
                 .environment(model)
                 .environment(\.usesGlass, model.usesGlass)
@@ -257,6 +257,6 @@ struct MenuBarContent: View {
             NSApp.activate()
             openSettings()
         }
-        Button(tr("Quit Luka") + " Plus") { NSApp.terminate(nil) }
+        Button(tr("Quit Kumara")) { NSApp.terminate(nil) }
     }
 }

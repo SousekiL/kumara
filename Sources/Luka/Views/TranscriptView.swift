@@ -823,7 +823,7 @@ struct TranscriptEmptyState: View {
                 Text(model.hasKey ? (model.isListening && isLive ? tr("Listening…") : tr("Ready when you are")) : tr("Connect Soniox"))
                     .font(.title2.weight(.semibold))
                 Text(model.hasKey
-                     ? tr("Luka listens to your Mac and writes down every speaker, translated as they talk.")
+                     ? tr("Kumara listens to your Mac and writes down every speaker, translated as they talk.")
                      : tr("Paste a Soniox API key to start. It’s stored encrypted on this Mac."))
                     .font(.callout)
                     .foregroundStyle(.secondary)

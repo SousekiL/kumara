@@ -29,7 +29,7 @@ struct PresenterView: View {
                 if rows.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "captions.bubble").font(.system(size: 40))
-                        Text(model.isListening ? tr("Listening…") : tr("Captions appear here when Luka is listening."))
+                        Text(model.isListening ? tr("Listening…") : tr("Captions appear here when Kumara is listening."))
                             .font(.system(size: 20, weight: .medium))
                     }
                     .foregroundStyle(.secondary)

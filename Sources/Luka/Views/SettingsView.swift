@@ -40,7 +40,7 @@ private struct GeneralSettings: View {
                     }
                 Toggle(tr("Show in Dock"), isOn: $model.showsInDock)
             } footer: {
-                Text(tr("Luka keeps running in the menu bar, so ⌃⌥N can start a transcription at any time."))
+                Text(tr("Kumara keeps running in the menu bar, so ⌃⌥N can start a transcription at any time."))
             }
             Section {
                 SecureField(tr("API key"), text: $model.apiKey)
@@ -61,7 +61,7 @@ private struct GeneralSettings: View {
             Section {
                 Toggle(tr("Pause when it’s quiet"), isOn: $model.pausesWhenQuiet)
             } footer: {
-                Text(tr("After 3 minutes without sound, Luka closes the Soniox stream, which is billed while open, and starts again when sound returns."))
+                Text(tr("After 3 minutes without sound, Kumara closes the Soniox stream, which is billed while open, and starts again when sound returns."))
             }
             Section {
                 TextField(tr("Context"), text: $model.context, prompt: Text(tr("Names, topics, jargon…")), axis: .vertical)
@@ -160,8 +160,8 @@ private struct CaptionSettings: View {
                 Text(tr("The Dark style and its opacity also apply to the floating summary and answers card."))
                 + Text(verbatim: " ")
                 + Text(LukaGlassSupport.available
-                       ? tr("Liquid Glass applies to all of Luka, the transcript window’s buttons included. Turn it off for solid, higher-contrast captions and controls.")
-                       : tr("Liquid Glass needs macOS 26. Luka uses system materials on this Mac."))
+                       ? tr("Liquid Glass applies to all of Kumara, the transcript window’s buttons included. Turn it off for solid, higher-contrast captions and controls.")
+                       : tr("Liquid Glass needs macOS 26. Kumara uses system materials on this Mac."))
             }
 
             // The transcript window is a separate window with its own light or dark choice.
@@ -227,7 +227,7 @@ private struct CaptionSettings: View {
                 Text(tr("Captions"))
             } footer: {
                 Text(model.captionVisibility == .whileListening
-                     ? tr("Captions fade in when Luka starts listening and out when you finish. ⌃⌥C hides or shows them anytime.")
+                     ? tr("Captions fade in when Kumara starts listening and out when you finish. ⌃⌥C hides or shows them anytime.")
                      : tr("Captions stay until you hide them with ⌃⌥C."))
                 + Text(verbatim: " ")
                 + Text(tr("Drag the caption’s top or bottom edge to add lines, its sides to resize. Drop it near the center and it snaps."))
@@ -286,7 +286,7 @@ private struct ShortcutSettings: View {
                     LabeledContent(shortcut.title) { KeyCaps(keys: shortcut.keys) }
                 }
             }
-            Section(tr("In Luka")) {
+            Section(tr("In Kumara")) {
                 ForEach(local, id: \.0) { row in
                     LabeledContent(row.0) { KeyCaps(keys: row.1) }
                 }
@@ -308,7 +308,7 @@ private struct UsageSettings: View {
                 LabeledContent(tr("This month")) { Text(model.monthUsage.summary).monospacedDigit() }
                 LabeledContent(tr("Last month")) { Text(model.lastMonthUsage.summary).monospacedDigit() }
             } header: {
-                Text(tr("Usage in Luka"))
+                Text(tr("Usage in Kumara"))
             } footer: {
                 Text(tr("Estimated from Soniox’s published rates: $0.12 per hour transcribed, $0.18 per hour translated, per stream. Your Soniox console has the exact bill."))
             }

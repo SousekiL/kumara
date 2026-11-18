@@ -235,7 +235,7 @@ struct SummaryPanel: View {
     @ViewBuilder private var channelHint: some View {
         if answerer.enabled, model.assistantMode == .interview, !model.splitsBySource {
             VStack(alignment: .leading, spacing: 6) {
-                Text(tr("To answer only the interviewer’s questions and never your own, Luka needs to hear you and them separately."))
+                Text(tr("To answer only the interviewer’s questions and never your own, Kumara needs to hear you and them separately."))
                 Button(tr("Turn On Me / Them")) { model.separatesSpeakers = true }
                     .controlSize(.small)
             }

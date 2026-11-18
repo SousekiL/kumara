@@ -12,8 +12,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# The fork installs as its own app, beside the original Luka.
-APP="build/Luka Plus.app"
+# The fork installs as its own app, Kumara, beside the original Luka. Same bundle ID as when it was
+# called Luka Plus, so settings, keys, permissions and sessions carry over.
+APP="build/Kumara.app"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
 IDENTITY="${LUKA_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ {print $2; exit}')}"
 NOTARY_PROFILE="${LUKA_NOTARY_PROFILE:-luka-notary}"
@@ -99,10 +100,11 @@ case "${1:-}" in
     --install)
         build_app
         mkdir -p ~/Applications
-        # Earlier builds of this fork were installed as Luka.app; the original lives in /Applications.
-        rm -rf ~/Applications/Luka.app "$HOME/Applications/Luka Plus.app"
+        # Earlier builds of this fork were installed as Luka.app and Luka Plus.app; the original lives in /Applications.
+        osascript -e 'quit app "Luka Plus"' >/dev/null 2>&1 || true
+        rm -rf ~/Applications/Luka.app "$HOME/Applications/Luka Plus.app" ~/Applications/Kumara.app
         cp -R "$APP" ~/Applications/
-        echo "Installed ~/Applications/Luka Plus.app"
+        echo "Installed ~/Applications/Kumara.app"
         ;;
     --zip)
         build_app

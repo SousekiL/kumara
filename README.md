@@ -92,9 +92,11 @@ Inside Luka: <kbd>⌘</kbd><kbd>E</kbd> names whoever is speaking, <kbd>⌘</kbd
 
 Listen to Mac audio, the microphone, or both. The interface speaks English, 한국어 and 中文.
 
-## This fork: Luka Plus
+## This fork: Kumara
 
-This fork builds as **Luka Plus** (`~/Applications/Luka Plus.app`, bundle ID `io.github.sousekil.luka-plus`), so it sits beside the original Luka without being mistaken for it. It takes over the original's settings on first launch and shares its API key and sessions; don't run both at once. Settings › Captions › **Font** sets the font for captions, the transcript and the summary.
+<img src="docs/icon/kumara.png" width="96" alt="Kumara" align="right">
+
+This fork builds as **Kumara** (`~/Applications/Kumara.app`; it was called Luka Plus, and keeps that bundle ID, `io.github.sousekil.luka-plus`, so settings, keys and permissions carry over), so it sits beside the original Luka without being mistaken for it. The name is for Kumārajīva (鸠摩罗什), the translator whose versions of the sutras are still read today. The icon's source is `docs/icon/kumara.svg`. It takes over the original's settings on first launch and shares its API key and sessions; don't run both at once. Settings › Captions › **Font** sets the font for captions, the transcript and the summary.
 
 ## Meetings and interviews
 
