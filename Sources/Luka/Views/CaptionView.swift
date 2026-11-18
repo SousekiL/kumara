@@ -202,7 +202,8 @@ struct CaptionRowView: View {
         let size = row.isOriginal ? metrics.originalFontSize : metrics.fontSize
         // The original stays a step below the translation, but firm enough to read over any background.
         let solid = Text(row.solid).foregroundStyle(row.isOriginal ? AnyShapeStyle(Color.primary.opacity(0.82)) : AnyShapeStyle(.primary))
-        let faint = Text(row.faint).foregroundStyle(.tertiary)
+        // Words still being recognized: quieter than settled text, but clearly readable on any background.
+        let faint = Text(row.faint).foregroundStyle(Color.primary.opacity(0.6))
         return Text("\(solid)\(faint)")
             .font(LukaFont.font(metrics.family, size: size, weight: row.isOriginal ? .regular : metrics.weight))
     }
