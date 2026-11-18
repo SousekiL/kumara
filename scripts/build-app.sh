@@ -1,9 +1,9 @@
 #!/bin/bash
-# Builds Luka.app into ./build.
-#   (none)     build/Luka.app
+# Builds Kumara.app into ./build.
+#   (none)     build/Kumara.app
 #   --install  also copy it to ~/Applications
-#   --zip      build/Luka-<version>.zip
-#   --dmg      build/Luka-<version>.dmg (drag-to-Applications disk image)
+#   --zip      build/Kumara-<version>.zip
+#   --dmg      build/Kumara-<version>.dmg (drag-to-Applications disk image)
 #   --release  signed, notarized and stapled DMG + zip
 #
 # Signs with the first "Developer ID Application" identity in the keychain (override with
@@ -56,21 +56,21 @@ build_app() {
 }
 
 make_zip() {
-    ZIP="build/Luka-$VERSION.zip"
+    ZIP="build/Kumara-$VERSION.zip"
     rm -f "$ZIP"
     ditto -c -k --norsrc --noextattr --keepParent "$APP" "$ZIP"
     echo "Packaged $ZIP"
 }
 
 make_dmg() {
-    DMG="build/Luka-$VERSION.dmg"
+    DMG="build/Kumara-$VERSION.dmg"
     local stage=build/dmg
     rm -rf "$stage" "$DMG" build/dmg-rw.dmg
     mkdir -p "$stage"
     cp -R "$APP" "$stage/"
     ln -s /Applications "$stage/Applications"
     cp Resources/AppIcon.icns "$stage/.VolumeIcon.icns"
-    hdiutil create -quiet -volname "Luka" -srcfolder "$stage" -fs HFS+ -format UDRW -ov build/dmg-rw.dmg
+    hdiutil create -quiet -volname "Kumara" -srcfolder "$stage" -fs HFS+ -format UDRW -ov build/dmg-rw.dmg
     local mount
     mount=$(hdiutil attach -nobrowse -noautoopen build/dmg-rw.dmg | awk -F'\t' '/Apple_HFS/ {print $NF}')
     SetFile -a C "$mount" 2>/dev/null || true
