@@ -149,9 +149,9 @@ final class AppModel {
     var captionFontSize: Double { didSet { store(captionFontSize, "captionFontSize") } }
     /// The original-language line under a translation, sized on its own.
     var captionOriginalFontSize: Double { didSet { store(captionOriginalFontSize, "captionOriginalFontSize") } }
-    static let captionOriginalFontRange = 11.0...48.0
+    nonisolated static let captionOriginalFontRange = 11.0...48.0
     /// Where the original line starts out: 80% of the caption size.
-    static func defaultOriginalSize(for size: Double) -> Double { max(12, (size * 0.8).rounded()) }
+    nonisolated static func defaultOriginalSize(for size: Double) -> Double { max(12, (size * 0.8).rounded()) }
     var captionShowsOriginal: Bool { didSet { store(captionShowsOriginal, "captionShowsOriginal") } }
     /// In three-way mode, the one translation captions show; empty shows them all.
     var captionLanguage: String { didSet { store(captionLanguage, "captionLanguage") } }
