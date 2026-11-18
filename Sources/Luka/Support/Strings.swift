@@ -199,6 +199,8 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Guide (bilingual)": "讲解（双语）",
+        "Guide: explanations in the translation language; technical terms, key original wording and anything to say aloud (sample answers, questions to ask) in the spoken language.": "讲解模式：说明用翻译语言；专业术语、关键原话，以及要开口说的内容（示范回答、反问的问题）用对话原本的语言。",
         "Floating Button": "浮动按钮",
         "Background opacity": "背景不透明度",
         "Hide captions": "隐藏字幕",

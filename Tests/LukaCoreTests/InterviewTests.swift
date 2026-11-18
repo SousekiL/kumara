@@ -377,3 +377,21 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(!AnswerPrompt.user(question: "Q", asker: "Them", conversation: "", knowledge: "").contains("already answered"))
     }
 }
+
+
+@Suite struct GuideLanguageTests {
+    @Test func guideKeepsSpokenWordingAndTerms() {
+        let guide = OutputLanguage("Simplified Chinese", spoken: "English")
+        #expect(guide.isGuide)
+        let summary = SummaryPrompt.system(language: guide, mode: .meeting)
+        #expect(summary.contains("Write in Simplified Chinese") && summary.contains("keep in English, exactly as said"))
+        let answers = AnswerPrompt.system(language: guide, mode: .interview, role: "Data Scientist")
+        #expect(answers.contains("Explain in Simplified Chinese") && answers.contains("goes in English, ready to say"))
+        #expect(SummaryPrompt.system(language: guide, mode: .lecture).contains("keep in English"))
+    }
+
+    @Test func sameLanguageIsNotGuide() {
+        #expect(!OutputLanguage("English", spoken: "English").isGuide)
+        #expect(AnswerPrompt.system(language: "English").contains("Write in English."))
+    }
+}

@@ -130,8 +130,12 @@ public struct KnowledgeBase: Sendable {
 
 public enum AnswerPrompt {
     public static func system(language: String, mode: AssistantMode = .meeting, role: String = "", extra: String = "") -> String {
+        system(language: OutputLanguage(language), mode: mode, role: role, extra: extra)
+    }
+
+    public static func system(language: OutputLanguage, mode: AssistantMode = .meeting, role: String = "", extra: String = "") -> String {
         var prompt = """
-        You assist someone taking part in a live conversation (a meeting, an interview, a lecture or a call). A question was just asked. Give them what they need to answer it well, short enough to read at a glance. Write in \(language).
+        You assist someone taking part in a live conversation (a meeting, an interview, a lecture or a call). A question was just asked. Give them what they need to answer it well, short enough to read at a glance. \(language.answerRule)
 
         Format
         Line 1 is exactly "SOURCE: knowledge" or "SOURCE: model" (see Sources).

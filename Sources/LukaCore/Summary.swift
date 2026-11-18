@@ -162,10 +162,14 @@ public enum SummaryPrompt {
     public static let tailLimit = 700
 
     public static func system(language: String, detail: SummaryDetail = .concise, mode: AssistantMode = .meeting, extra: String = "") -> String {
+        system(language: OutputLanguage(language), detail: detail, mode: mode, extra: extra)
+    }
+
+    public static func system(language: OutputLanguage, detail: SummaryDetail = .concise, mode: AssistantMode = .meeting, extra: String = "") -> String {
         if mode.rewritesSummary { return overviewSystem(language: language, detail: detail, mode: mode, extra: extra) }
         let limits = detail.limits
         var prompt = """
-        You keep running notes of a conversation that is being transcribed live (a meeting, an interview, a call, a lecture, a podcast or a video). The reader follows the notes as they grow and reads only the newest lines to keep up, so what is already written stays exactly as it is. Write in \(language).
+        You keep running notes of a conversation that is being transcribed live (a meeting, an interview, a call, a lecture, a podcast or a video). The reader follows the notes as they grow and reads only the newest lines to keep up, so what is already written stays exactly as it is. \(language.summaryRule)
 
         Each time you get the last lines of the notes so far and the new part of the transcript. Reply with only the lines to add at the end. Never repeat, rephrase or rewrite what the notes already say.
 
@@ -201,10 +205,10 @@ public enum SummaryPrompt {
     }
 
     /// The other way to keep a summary: one structured overview, rewritten whole as the talk goes on.
-    static func overviewSystem(language: String, detail: SummaryDetail, mode: AssistantMode, extra: String) -> String {
+    static func overviewSystem(language: OutputLanguage, detail: SummaryDetail, mode: AssistantMode, extra: String) -> String {
         let limits = detail.overviewLimits
         return """
-        You maintain a structured summary of a talk that is being transcribed live. The reader glances at it to see where the talk stands as a whole. Write in \(language), headings included.
+        You maintain a structured summary of a talk that is being transcribed live. The reader glances at it to see where the talk stands as a whole. \(language.summaryRule)
 
         Each time you get the current summary and the new part of the transcript. Reply with the complete updated summary: rewrite and merge, so it always covers the whole talk within the limits below.
 

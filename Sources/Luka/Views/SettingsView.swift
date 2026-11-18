@@ -503,6 +503,7 @@ private struct SummarySettings: View {
             Section {
                 Picker(tr("Language"), selection: $summarizer.language) {
                     Text(tr("Same as translation")).tag("")
+                    Text(tr("Guide (bilingual)")).tag("guide")
                     Divider()
                     ForEach(Languages.ordered(in: Localizer.shared.locale), id: \.self) {
                         Text(Languages.name($0, in: Localizer.shared.locale)).tag($0)
@@ -518,7 +519,10 @@ private struct SummarySettings: View {
             } header: {
                 Text(tr("Display"))
             } footer: {
-                Text(tr("The language and text size of the summary and the answers. The floating button sits on the right edge of the screen; click it for the summary and answers over any app, drag it up or down."))
+                Text((summarizer.language == "guide"
+                      ? tr("Guide: explanations in the translation language; technical terms, key original wording and anything to say aloud (sample answers, questions to ask) in the spoken language.") + " "
+                      : "")
+                     + tr("The language and text size of the summary and the answers. The floating button sits on the right edge of the screen; click it for the summary and answers over any app, drag it up or down."))
             }
         }
         .formStyle(.grouped)

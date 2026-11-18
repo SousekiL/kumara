@@ -67,7 +67,7 @@ final class Summarizer {
     // MARK: Updating
 
     /// Called every second while listening; adds to the notes once a little more has been said.
-    func tick(_ t: Transcript, languageName: String, name: @escaping (SpeakerID) -> String) {
+    func tick(_ t: Transcript, language: OutputLanguage, name: @escaping (SpeakerID) -> String) {
         guard enabled, isConfigured, !working else { return }
         let now = Date.now
         // One request at a time, a few seconds apart; back off after a failure.
@@ -80,22 +80,22 @@ final class Summarizer {
         guard mode.rewritesSummary
             ? SummaryPrompt.shouldUpdateOverview(newWeight: weight, sinceUpdate: since)
             : SummaryPrompt.shouldUpdate(newWeight: weight, sinceUpdate: since, sinceLastSpeech: speaking ? 0 : 10) else { return }
-        run(t, rewrite: false, closedOnly: true, languageName: languageName, name: name)
+        run(t, rewrite: false, closedOnly: true, language: language, name: name)
     }
 
     /// When listening stops: note whatever is left, including a line still open.
-    func catchUp(_ t: Transcript, languageName: String, name: @escaping (SpeakerID) -> String) {
+    func catchUp(_ t: Transcript, language: OutputLanguage, name: @escaping (SpeakerID) -> String) {
         guard enabled, isConfigured, !working else { return }
-        run(t, rewrite: false, closedOnly: false, languageName: languageName, name: name)
+        run(t, rewrite: false, closedOnly: false, language: language, name: name)
     }
 
     /// The refresh button: write the notes again from the whole transcript.
-    func refresh(_ t: Transcript, languageName: String, name: @escaping (SpeakerID) -> String) {
+    func refresh(_ t: Transcript, language: OutputLanguage, name: @escaping (SpeakerID) -> String) {
         guard isConfigured, !working else { return }
-        run(t, rewrite: true, closedOnly: false, languageName: languageName, name: name)
+        run(t, rewrite: true, closedOnly: false, language: language, name: name)
     }
 
-    private func run(_ t: Transcript, rewrite: Bool, closedOnly: Bool, languageName: String, name: @escaping (SpeakerID) -> String) {
+    private func run(_ t: Transcript, rewrite: Bool, closedOnly: Bool, language: OutputLanguage, name: @escaping (SpeakerID) -> String) {
         var rewrite = rewrite
         var user = ""
         var lastID: Int?
@@ -119,7 +119,7 @@ final class Summarizer {
             lastID = new.lastLineID
         }
         let endpoint = self.endpoint
-        let system = SummaryPrompt.system(language: languageName, detail: detail, mode: mode, extra: instructions)
+        let system = SummaryPrompt.system(language: language, detail: detail, mode: mode, extra: instructions)
         // An overview comes back whole each time, so it replaces what was there.
         let whole = rewrite || mode.rewritesSummary
         guard let request = endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: rewrite ? 6_000 : whole ? 2_500 : 1_000) else {

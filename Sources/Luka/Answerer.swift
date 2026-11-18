@@ -119,7 +119,7 @@ final class Answerer {
     // MARK: Answering
 
     /// Called every second while listening: answers the newest question that just finished.
-    func tick(_ t: Transcript, summarizer: Summarizer, languageName: String, channelsOnly: Bool, name: (SpeakerID) -> String) {
+    func tick(_ t: Transcript, summarizer: Summarizer, language: OutputLanguage, channelsOnly: Bool, name: (SpeakerID) -> String) {
         guard enabled, summarizer.isConfigured else { return }
         if sessionID != t.id {
             sessionID = t.id
@@ -136,7 +136,7 @@ final class Answerer {
                                      previous: previous)
         let endpoint = summarizer.endpoint
         guard let request = endpoint.request(apiKey: summarizer.apiKey,
-                                             system: AnswerPrompt.system(language: languageName, mode: mode, role: role, extra: instructions),
+                                             system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: instructions),
                                              user: user, maxTokens: 500) else { return }
         working = true
         Task {

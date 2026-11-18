@@ -489,7 +489,7 @@ final class AppModel {
         transcript.clearProvisional()
         store.save(transcript)
         flushUsage()
-        summarizer.catchUp(transcript, languageName: summaryLanguageName, name: summaryName(in: transcript))
+        summarizer.catchUp(transcript, language: assistantLanguage, name: summaryName(in: transcript))
         // Soniox's own numbers lag a little; look again once this session has been billed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.refreshAccount() }
     }
@@ -761,11 +761,31 @@ final class AppModel {
 
     // MARK: Live summary
 
-    /// The summary's language, in English for the prompt. Empty setting follows the translation.
-    var summaryLanguageName: String {
-        let code = !summarizer.language.isEmpty ? summarizer.language
-            : mode == .transcribe ? (source == "auto" ? Localizer.shared.resolved.rawValue : source)
+    /// The assistant's language. Empty follows the translation; "guide" explains in the translation's
+    /// language and keeps terms, quotes and things to say in the spoken language.
+    var assistantLanguage: OutputLanguage {
+        let translated = mode == .transcribe ? (source == "auto" ? Localizer.shared.resolved.rawValue : source)
             : mode == .twoWay ? languageB : target
+        switch summarizer.language {
+        case "": return OutputLanguage(Self.englishName(translated))
+        case "guide": return OutputLanguage(Self.englishName(translated), spoken: Self.englishName(spokenLanguage))
+        default: return OutputLanguage(Self.englishName(summarizer.language))
+        }
+    }
+
+    /// The language being spoken: the one set as the source, or else the one most heard lately.
+    private var spokenLanguage: String {
+        if mode == .translate || mode == .transcribe, source != "auto" { return source }
+        if mode == .twoWay { return languageA }
+        var counts: [String: Int] = [:]
+        for line in transcript.lines.suffix(40) {
+            guard let language = line.language, mode == .transcribe || line.expectsTranslation else { continue }
+            counts[language, default: 0] += line.original.count
+        }
+        return counts.max { $0.value < $1.value }?.key ?? "en"
+    }
+
+    nonisolated static func englishName(_ code: String) -> String {
         if code == "zh" { return "Simplified Chinese" }
         return Locale(identifier: "en").localizedString(forLanguageCode: code) ?? code
     }
@@ -787,17 +807,17 @@ final class AppModel {
     private func tickSummary() {
         guard [.live, .standby, .paused].contains(status) else { return }
         if summarizer.enabled {
-            summarizer.tick(transcript, languageName: summaryLanguageName, name: summaryName(in: transcript))
+            summarizer.tick(transcript, language: assistantLanguage, name: summaryName(in: transcript))
         }
         if answerer.enabled {
             let hasChannels = transcript.visibleSpeakers.contains { Channel($0.id) != nil }
-            answerer.tick(transcript, summarizer: summarizer, languageName: summaryLanguageName,
+            answerer.tick(transcript, summarizer: summarizer, language: assistantLanguage,
                           channelsOnly: hasChannels, name: summaryName(in: transcript))
         }
     }
 
     func refreshSummary(_ t: Transcript) {
-        summarizer.refresh(t, languageName: summaryLanguageName, name: summaryName(in: t))
+        summarizer.refresh(t, language: assistantLanguage, name: summaryName(in: t))
     }
 
     // MARK: Soniox account
