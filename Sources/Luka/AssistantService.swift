@@ -32,6 +32,17 @@ final class AssistantService {
     private(set) var testResult: String?
     private(set) var testing = false
 
+    // A separate model for questions the reader asks: worth a stronger model and a longer wait.
+    var askUsesOwnModel: Bool { didSet { defaults.set(askUsesOwnModel, forKey: "ask.ownModel") } }
+    var askProvider: SummaryProvider { didSet { defaults.set(askProvider.rawValue, forKey: "ask.provider") } }
+    var askBaseURL: String { didSet { defaults.set(askBaseURL, forKey: "ask.baseURL") } }
+    var askModel: String { didSet { defaults.set(askModel, forKey: "ask.model") } }
+    var askAPIKey: String { didSet { SecretStore.save(askAPIKey, slot: "ask") } }
+    /// Deepest reasoning for asked questions (extended thinking, or high reasoning effort).
+    var askThinks: Bool { didSet { defaults.set(askThinks, forKey: "ask.thinks") } }
+    private(set) var askTestResult: String?
+    private(set) var askTesting = false
+
     init() {
         let d = UserDefaults.standard
         provider = SummaryProvider(rawValue: d.string(forKey: "summary.provider") ?? "") ?? .openAI
@@ -42,6 +53,12 @@ final class AssistantService {
         // 14 pt reads comfortably at arm's length in a side column; 13 is the system's body size.
         fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 14
         readerNames = d.string(forKey: "assistant.readerNames") ?? "Felix, Weifeng"
+        askUsesOwnModel = d.bool(forKey: "ask.ownModel")
+        askProvider = SummaryProvider(rawValue: d.string(forKey: "ask.provider") ?? "") ?? .anthropic
+        askBaseURL = d.string(forKey: "ask.baseURL") ?? ""
+        askModel = d.string(forKey: "ask.model") ?? ""
+        askAPIKey = SecretStore.read("ask") ?? ""
+        askThinks = d.object(forKey: "ask.thinks") as? Bool ?? true
         if let note = d.string(forKey: "assistant.note") {
             self.note = note
         } else {
@@ -68,6 +85,24 @@ final class AssistantService {
         endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: maxTokens, stream: stream)
     }
 
+    /// The model for questions the reader asks: its own when set, otherwise the shared one.
+    var askEndpoint: SummaryEndpoint {
+        askUsesOwnModel ? SummaryEndpoint(provider: askProvider, baseURL: askBaseURL, model: askModel.trimmingCharacters(in: .whitespaces)) : endpoint
+    }
+
+    var isAskConfigured: Bool {
+        guard askUsesOwnModel else { return isConfigured }
+        let e = askEndpoint
+        let local = ["localhost", "127.0.0.1", "0.0.0.0"].contains(e.url?.host ?? "")
+        return !e.model.isEmpty && (!askAPIKey.trimmingCharacters(in: .whitespaces).isEmpty || local) && e.url != nil
+    }
+
+    func askRequest(system: String, user: String) -> URLRequest? {
+        askUsesOwnModel
+            ? askEndpoint.request(apiKey: askAPIKey, system: system, user: user, maxTokens: 6_000, stream: true, thinks: askThinks)
+            : endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: 6_000, stream: true, thinks: askThinks)
+    }
+
     // MARK: Sending
 
     /// Sends one request and waits for the whole reply.
@@ -79,8 +114,8 @@ final class AssistantService {
 
     /// Sends a streaming request; `progress` gets the reply so far as it comes in.
     /// A service that answers all at once instead still works.
-    func stream(_ request: URLRequest, progress: @MainActor (String) -> Void) async throws -> String {
-        let endpoint = self.endpoint
+    func stream(_ request: URLRequest, via endpoint: SummaryEndpoint? = nil, progress: @MainActor (String) -> Void) async throws -> String {
+        let endpoint = endpoint ?? self.endpoint
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         let http = response as? HTTPURLResponse
         let type = http?.value(forHTTPHeaderField: "Content-Type") ?? ""
@@ -128,6 +163,31 @@ final class AssistantService {
     }
 
     // MARK: Settings
+
+    /// Settings' test button for the asked-questions model.
+    func testAsk() {
+        guard isAskConfigured else {
+            askTestResult = tr("Fill in the model and API key first.")
+            return
+        }
+        let e = askEndpoint
+        guard let request = e.request(apiKey: askAPIKey, system: "Reply with the single word OK.", user: "ping", maxTokens: 2_000) else {
+            askTestResult = tr("The summary model’s address isn’t valid.")
+            return
+        }
+        askTesting = true
+        askTestResult = nil
+        Task {
+            defer { askTesting = false }
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let reply = try Self.parse(data, response: response, endpoint: e)
+                askTestResult = tr("Connected") + " · " + String(reply.prefix(40))
+            } catch {
+                askTestResult = error.localizedDescription
+            }
+        }
+    }
 
     /// Settings' test button: one tiny request to check the address, key and model.
     func test() {

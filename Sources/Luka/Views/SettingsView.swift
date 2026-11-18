@@ -414,6 +414,48 @@ private struct SummarySettings: View {
                 Text(tr("One model, with its own API key, writes both the summary and the answers. A preset fills in the address and a model name to start from."))
             }
 
+            // Questions typed in the panel can take a stronger, slower model than the live helpers.
+            Section {
+                Toggle(tr("Use a separate model"), isOn: $service.askUsesOwnModel)
+                if service.askUsesOwnModel {
+                    LabeledContent(tr("Service")) {
+                        Menu(tr("Choose a preset")) {
+                            ForEach(Self.presets) { preset in
+                                Button(preset.name) {
+                                    service.askProvider = preset.provider
+                                    service.askBaseURL = preset.baseURL
+                                    service.askModel = preset.model
+                                }
+                            }
+                        }
+                        .fixedSize()
+                    }
+                    Picker(tr("API type"), selection: $service.askProvider) {
+                        Text(tr("OpenAI-compatible")).tag(SummaryProvider.openAI)
+                        Text(tr("Anthropic (Claude)")).tag(SummaryProvider.anthropic)
+                    }
+                    TextField(tr("Base URL"), text: $service.askBaseURL, prompt: Text(verbatim: service.askProvider.defaultBaseURL))
+                    TextField(tr("Model"), text: $service.askModel, prompt: Text(tr("The model’s name at this service")))
+                    SecureField(tr("API key"), text: $service.askAPIKey)
+                    HStack {
+                        if service.askTesting {
+                            ProgressView().controlSize(.small)
+                        } else if let result = service.askTestResult {
+                            Text(result).foregroundStyle(.secondary).lineLimit(2)
+                        }
+                        Spacer()
+                        Button(tr("Test")) { service.testAsk() }
+                            .disabled(service.askTesting || !service.isAskConfigured)
+                    }
+                    .font(.callout)
+                }
+                Toggle(tr("Think deeply"), isOn: $service.askThinks)
+            } header: {
+                Text(tr("Questions you ask"))
+            } footer: {
+                Text(tr("Type a question at the bottom of the summary column, in the transcript window or the floating card; the answer shows under Answers and draws on this session’s transcript, its notes and your knowledge base. Off: the same model as above. Think deeply turns on extended thinking for Claude and the highest reasoning effort for OpenAI-compatible models; answers take longer. Turn it off if the service rejects it."))
+            }
+
             // The mode sets the scene; every switch it sets stays here to change by hand.
             Section {
                 Picker(tr("Mode"), selection: $model.assistantMode) {

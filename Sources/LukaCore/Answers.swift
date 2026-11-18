@@ -18,9 +18,11 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
     public var used: String?
     /// For a polish: the smoother version, kept for the review afterwards.
     public var better: String?
+    /// For a question the reader typed: what the answer rests on ("transcript", "knowledge" or "model").
+    public var source: String?
 
     public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date, kind: String? = nil,
-                status: String? = nil, used: String? = nil, better: String? = nil) {
+                status: String? = nil, used: String? = nil, better: String? = nil, source: String? = nil) {
         self.id = id
         self.question = question
         self.answer = answer
@@ -30,6 +32,7 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
         self.status = status
         self.used = used
         self.better = better
+        self.source = source
     }
 }
 
@@ -292,5 +295,72 @@ extension Transcript {
         }
         guard let newest = waiting.last else { return nil }
         return (newest, waiting.map(\.id))
+    }
+}
+
+
+/// A question the reader types about the conversation, answered on request.
+public enum AskPrompt {
+    public static func system(language: OutputLanguage, mode: AssistantMode = .meeting, role: String = "", extra: String = "") -> String {
+        let format: String
+        if let spoken = language.spoken {
+            format = """
+            After the SOURCE line: first a direct answer in at most 25 words of \(language.explain); then, only if it helps, up to 4 "- " bullets, each at most 18 words. Technical terms, quotes from the conversation and anything the reader might say stay in \(spoken), in quotes.
+            """
+        } else {
+            format = """
+            After the SOURCE line: first a direct answer in at most 25 words of \(language.explain); then, only if it helps, up to 4 "- " bullets, each at most 18 words. Quote the conversation's own words when they settle it.
+            """
+        }
+        var prompt = """
+        The reader is in a live \(mode == .interview ? "interview" : mode == .lecture ? "talk or lecture" : "meeting or call") and is asking you a question directly. Answer it.
+        Use, in this order: what was said in the conversation, the reader's knowledge base, then your own knowledge.
+        Start with one line "SOURCE: transcript" when the answer comes from the conversation, "SOURCE: knowledge" when it rests on the knowledge base, or "SOURCE: model" when it is your own knowledge.
+        \(format)
+        When the question is about the conversation and the transcript doesn't settle it, say so plainly instead of guessing. The transcript comes from speech recognition and may contain errors; read through them. Never invent the reader's facts or numbers. No headings, no preamble, never show your reasoning.
+        """
+        if mode == .interview, !role.isEmpty { prompt += "\nThe reader is a candidate interviewing for \(role)." }
+        let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !extra.isEmpty { prompt += "\n\nAbout the reader and this conversation:\n\(extra)" }
+        return prompt
+    }
+
+    public static func user(question: String, conversation: String, notes: String?, knowledge: String,
+                            previous: [(question: String, answer: String)] = []) -> String {
+        var parts: [String] = []
+        if let notes, !notes.isEmpty { parts.append("Notes taken so far:\n<notes>\n\(notes)\n</notes>") }
+        parts.append("The conversation (most recent part):\n<conversation>\n\(conversation)\n</conversation>")
+        if !knowledge.isEmpty { parts.append("From the reader's knowledge base:\n<knowledge>\n\(knowledge)\n</knowledge>") }
+        if !previous.isEmpty {
+            parts.append("The reader's earlier questions, for follow-ups:\n" + previous.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n"))
+        }
+        parts.append("The reader's question:\n\(question)")
+        return parts.joined(separator: "\n\n")
+    }
+
+    /// The answer and what it rests on.
+    public static func parse(_ reply: String) -> (text: String, source: String)? {
+        var lines = SummaryPrompt.clean(reply).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var source = "model"
+        // Keep only the last SOURCE block, should the model have started over.
+        if let last = lines.lastIndex(where: { $0.trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("SOURCE:") }) {
+            let value = lines[last].split(separator: ":", maxSplits: 1).last.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
+            if value.hasPrefix("transcript") || value.hasPrefix("conversation") { source = "transcript" }
+            else if value.hasPrefix("knowledge") { source = "knowledge" }
+            lines = Array(lines[(last + 1)...])
+        }
+        let text = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : (text, source)
+    }
+
+    /// What can be shown of a reply still coming in: nil while it is only the SOURCE line.
+    public static func partial(_ reply: String) -> (text: String, source: String)? {
+        var text = reply
+        if !text.hasSuffix("\n"), let lastLine = text.split(separator: "\n", omittingEmptySubsequences: false).last,
+           "SOURCE:".hasPrefix(lastLine.trimmingCharacters(in: .whitespaces).uppercased())
+            || lastLine.trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("SOURCE:") {
+            text = String(text.dropLast(lastLine.count))
+        }
+        return parse(text)
     }
 }

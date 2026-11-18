@@ -79,7 +79,10 @@ public struct SummaryEndpoint: Sendable, Equatable {
     }
 
     /// `stream` asks for server-sent events, read with `streamChunk(_:)`.
-    public func request(apiKey: String, system: String, user: String, maxTokens: Int = 1_500, stream: Bool = false) -> URLRequest? {
+    /// `thinks` asks for the model's deepest reasoning, for questions worth waiting on: extended thinking on Claude,
+    /// the highest reasoning effort on OpenAI-compatible services that support it.
+    public func request(apiKey: String, system: String, user: String, maxTokens: Int = 1_500, stream: Bool = false,
+                        thinks: Bool = false) -> URLRequest? {
         guard let url else { return nil }
         var r = URLRequest(url: url)
         r.httpMethod = "POST"
@@ -105,11 +108,21 @@ public struct SummaryEndpoint: Sendable, Equatable {
                 "messages": [["role": "user", "content": user]],
             ]
         }
+        if thinks {
+            switch provider {
+            case .openAI:
+                body["reasoning_effort"] = "high"
+            case .anthropic:
+                // The thinking budget has to leave room for the answer under max_tokens.
+                body["max_tokens"] = max(maxTokens, 16_000)
+                body["thinking"] = ["type": "enabled", "budget_tokens": 10_000]
+            }
+        }
         if stream {
             body["stream"] = true
             r.setValue("text/event-stream", forHTTPHeaderField: "Accept")
             // Thinking first can take a while before any text arrives.
-            r.timeoutInterval = 120
+            r.timeoutInterval = thinks ? 300 : 120
         }
         r.httpBody = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
         return r

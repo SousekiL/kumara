@@ -128,7 +128,7 @@ extension Transcript {
                 guard !log.isEmpty else { continue }
                 if let status = item.status { log[log.count - 1].status = status }
                 if let used = item.used, !log[log.count - 1].used.contains(used) { log[log.count - 1].used.append(used) }
-            } else if item.kind != "reverse" {
+            } else if item.kind != "reverse", item.kind != "asked" {
                 log.append(QuestionLogEntry(question: item))
             }
         }

@@ -688,3 +688,40 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(t.recentText(minutes: 5, now: .now.addingTimeInterval(3600), name: name).contains("Latest point."))
     }
 }
+
+@Suite struct AskTests {
+    @Test func promptAndParse() {
+        let p = AskPrompt.system(language: OutputLanguage("Simplified Chinese", spoken: "English"), mode: .meeting, extra: "x")
+        #expect(p.contains("SOURCE: transcript") && p.contains("in quotes") && p.hasSuffix("x"))
+        let u = AskPrompt.user(question: "What did Priya ask me?", conversation: "Priya: can you size it?", notes: "- [Action → me] size it",
+                               knowledge: "", previous: [("Who is Priya?", "The PM.")])
+        #expect(u.hasSuffix("What did Priya ask me?") && u.contains("<notes>") && u.contains("Q: Who is Priya?"))
+        let a = AskPrompt.parse("SOURCE: transcript\n她问你周五前能否估算流失影响。")
+        #expect(a?.source == "transcript" && a?.text.hasPrefix("她问你") == true)
+        #expect(AskPrompt.parse("SOURCE: knowledge\nYes.")?.source == "knowledge")
+        #expect(AskPrompt.parse("Plain answer.")?.source == "model")
+        #expect(AskPrompt.partial("SOURCE: trans") == nil)
+        #expect(AskPrompt.partial("SOURCE: transcript\nShe")?.text == "She")
+    }
+
+    @Test @MainActor func askedQuestionsStayOutOfTheTracker() {
+        let t = Transcript()
+        t.answers = [QuestionAnswer(id: -5, question: "What did she ask?", answer: "a", fromKnowledge: false, createdAt: .now, kind: "asked", source: "transcript")]
+        #expect(t.questionLog.isEmpty)
+        #expect(Transcript(snapshot: t.snapshot).answers.first?.source == "transcript")
+    }
+}
+
+@Suite struct ThinkingRequestTests {
+    @Test func deepThinkingPerProvider() throws {
+        let claude = SummaryEndpoint(provider: .anthropic, baseURL: "", model: "m")
+        let r = try #require(claude.request(apiKey: "k", system: "s", user: "u", maxTokens: 4_000, stream: true, thinks: true))
+        let body = try #require(JSONSerialization.jsonObject(with: r.httpBody!) as? [String: Any])
+        #expect((body["thinking"] as? [String: Any])?["budget_tokens"] as? Int == 10_000 && body["max_tokens"] as? Int == 16_000)
+        let openAI = SummaryEndpoint(provider: .openAI, baseURL: "", model: "m")
+        let o = try #require(openAI.request(apiKey: "k", system: "s", user: "u", thinks: true))
+        #expect((try JSONSerialization.jsonObject(with: o.httpBody!) as? [String: Any])?["reasoning_effort"] as? String == "high")
+        let plain = try #require(openAI.request(apiKey: "k", system: "s", user: "u"))
+        #expect((try JSONSerialization.jsonObject(with: plain.httpBody!) as? [String: Any])?["reasoning_effort"] == nil)
+    }
+}

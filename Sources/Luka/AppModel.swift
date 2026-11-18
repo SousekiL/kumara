@@ -974,6 +974,12 @@ final class AppModel {
         }
     }
 
+    /// A question the reader typed in the panel, about this session.
+    func ask(_ question: String, in t: Transcript) {
+        let mode = isLive(t) ? assistantMode : (t.mode ?? assistantMode)
+        answerer.ask(question, in: t, mode: mode, language: assistantLanguage, name: summaryName(in: t))
+    }
+
     func catchMeUp(_ t: Transcript) {
         summarizer.catchMeUp(t, language: assistantLanguage, name: summaryName(in: t))
     }

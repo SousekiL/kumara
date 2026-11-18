@@ -586,5 +586,14 @@ enum Strings {
         "You": "你",
         "Your names": "你的名字",
         "Key terms (%d)": "术语（%d）",
+        "Ask": "提问",
+        "Ask about this conversation…": "问问这场对话…",
+        "From this conversation": "来自本次对话",
+        "Pick a model in Settings › Assistant to ask questions": "先在“设置 › 助手”里选好模型才能提问",
+        "Questions you ask": "我问的问题",
+        "Think deeply": "深度思考",
+        "Type a question at the bottom of the summary column, in the transcript window or the floating card; the answer shows under Answers and draws on this session’s transcript, its notes and your knowledge base. Off: the same model as above. Think deeply turns on extended thinking for Claude and the highest reasoning effort for OpenAI-compatible models; answers take longer. Turn it off if the service rejects it.": "在转写窗口或浮动面板的总结栏底部输入问题，回答显示在“回答”里，依据本次会话的转写、笔记和你的知识库。关闭时用上面同一个模型。深度思考会为 Claude 打开扩展思考、为 OpenAI 兼容模型设最高推理强度，回答会慢一些；如果服务报错不支持，就关掉它。",
+        "Use a separate model": "使用单独的模型",
+        "You asked": "你问的",
     ]
 }

@@ -86,6 +86,10 @@ struct SummaryPanel: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
+        // Ask anything about this session, from either tab; the answer shows under Answers.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            AskBar(transcript: transcript)
+        }
         // Answers already there when a session opens aren't news.
         .onAppear { seenAnswers = transcript.answers.count }
         .onChange(of: transcript.id) { seenAnswers = transcript.answers.count }
@@ -257,7 +261,7 @@ struct SummaryPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(rows) { row in
                     AnswerCard(row: row, fontSize: model.assistant.fontSize, family: model.fontFamily,
-                               askerColor: row.polish ? .secondary : model.speakerColor(asker(of: row.id), in: transcript)) {
+                               askerColor: row.polish ? .secondary : row.asked ? LukaTheme.accent : model.speakerColor(asker(of: row.id), in: transcript)) {
                         copy(row.answer, notice: tr("Copied answer"))
                     }
                     // The newest card carries the accent edge; earlier ones are quieter cards.
@@ -285,6 +289,10 @@ struct SummaryPanel: View {
         if let live = answerer.live, live.session == transcript.id, !live.polish || live.text != nil,
            !rows.contains(where: { $0.id == live.id }) {
             rows.insert(AnswerRow(live), at: 0)
+        }
+        // A question the reader asked shows at once, above everything, while it's answered.
+        if let asking = answerer.asking, asking.session == transcript.id, !rows.contains(where: { $0.id == asking.id }) {
+            rows.insert(AnswerRow(asking), at: 0)
         }
         return rows
     }
@@ -514,15 +522,20 @@ struct AnswerRow: Identifiable {
     let kind: String?
     let fromKnowledge: Bool
     let polish: Bool
+    /// A question the reader typed, and what its answer rests on.
+    let asked: Bool
+    let source: String?
     let createdAt: Date?
 
     init(_ item: QuestionAnswer) {
         id = item.id
         question = item.question
         answer = item.answer
-        kind = item.kind == "polish" ? nil : item.kind
+        kind = item.kind == "polish" || item.kind == "asked" ? nil : item.kind
         fromKnowledge = item.fromKnowledge
         polish = item.kind == "polish"
+        asked = item.kind == "asked"
+        source = item.source
         createdAt = item.createdAt
     }
 
@@ -533,6 +546,8 @@ struct AnswerRow: Identifiable {
         kind = live.kind
         fromKnowledge = live.fromKnowledge
         polish = live.polish
+        asked = live.asked
+        source = live.source
         createdAt = nil
     }
 
@@ -554,11 +569,13 @@ private struct AnswerCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Circle().fill(askerColor).frame(width: 6, height: 6)
                 // For a polish, the question line is what I said; show its start, not its last sentence.
-                Text(row.polish ? tr("You said") + ": " + row.question : Questions.lastSentence(row.question) ?? row.question)
-                    .font(LukaFont.font(family, size: max(11, fontSize - 2)))
-                    .foregroundStyle(.secondary)
+                Text(row.polish ? tr("You said") + ": " + row.question
+                     : row.asked ? tr("You asked") + ": " + row.question
+                     : Questions.lastSentence(row.question) ?? row.question)
+                    .font(LukaFont.font(family, size: max(11, fontSize - 2), weight: row.asked ? .medium : .regular))
+                    .foregroundStyle(row.asked ? .primary : .secondary)
                     .lineSpacing(fontSize * 0.15)
-                    .lineLimit(2)
+                    .lineLimit(row.asked ? 4 : 2)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(row.question)
             }
@@ -586,7 +603,13 @@ private struct AnswerCard: View {
             } else if let kind = row.kind {
                 KindTag(kind: kind)
             }
-            if row.answer != nil, !row.polish {
+            if row.asked, row.answer != nil {
+                switch row.source {
+                case "transcript": Label(tr("From this conversation"), systemImage: "text.bubble")
+                case "knowledge": Label(tr("From your knowledge base"), systemImage: "books.vertical")
+                default: Label(tr("Model’s own knowledge"), systemImage: "sparkles")
+                }
+            } else if row.answer != nil, !row.polish {
                 Label(row.fromKnowledge ? tr("From your knowledge base") : tr("Model’s own knowledge"),
                       systemImage: row.fromKnowledge ? "books.vertical" : "sparkles")
             }
@@ -852,6 +875,72 @@ private struct EmptyNote<Action: View>: View {
 extension EmptyNote where Action == EmptyView {
     init(symbol: String, text: String) {
         self.init(symbol: symbol, text: text) { EmptyView() }
+    }
+}
+
+/// The box at the bottom of the column for asking about this session.
+private struct AskBar: View {
+    @Environment(AppModel.self) private var model
+    let transcript: Transcript
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let ready = model.assistant.isAskConfigured
+        let busy = model.answerer.asking?.session == transcript.id
+        VStack(spacing: 0) {
+            Divider()
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("", text: $draft,
+                          prompt: Text(ready ? tr("Ask about this conversation…") : tr("Pick a model in Settings › Assistant to ask questions")),
+                          axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...4)
+                    .focused($focused)
+                    .disabled(!ready)
+                    .onSubmit(send)
+                    .onKeyPress(.escape) {
+                        guard !draft.isEmpty else { return .ignored }
+                        draft = ""
+                        return .handled
+                    }
+                Group {
+                    if busy {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button(action: send) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(canSend ? AnyShapeStyle(LukaTheme.accent) : AnyShapeStyle(.tertiary))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canSend)
+                        .help(tr("Ask") + "  ↩")
+                    }
+                }
+                .frame(width: 22, height: 22)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.primary.opacity(0.05), in: .rect(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(focused ? AnyShapeStyle(LukaTheme.accent.opacity(0.6)) : AnyShapeStyle(Color.primary.opacity(0.1)),
+                                  lineWidth: 0.75)
+            }
+            .padding(.horizontal, SummaryPanel.inset - 4)
+            .padding(.vertical, 10)
+        }
+    }
+
+    private var canSend: Bool {
+        model.assistant.isAskConfigured && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func send() {
+        guard canSend else { return }
+        model.ask(draft, in: transcript)
+        draft = ""
     }
 }
 

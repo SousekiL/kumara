@@ -25,10 +25,13 @@ final class Answerer {
         let id: Int
         let question: String
         let polish: Bool
+        /// A question the reader typed.
+        var asked = false
         /// What can be shown so far; nil until the model is past its header lines.
         var text: String?
         var fromKnowledge = false
         var kind: String?
+        var source: String?
     }
 
     private let defaults = UserDefaults.standard
@@ -67,6 +70,9 @@ final class Answerer {
     private(set) var lastError: String?
     /// The answer or polish being written right now.
     private(set) var live: Live?
+    /// The answer to a question the reader typed, being written; separate, so neither waits for the other.
+    private(set) var asking: Live?
+    @ObservationIgnored private var askTask: Task<Void, Never>?
 
     /// Called when an answer starts to show, and again when it is filed.
     @ObservationIgnored var onAnswer: () -> Void = {}
@@ -234,6 +240,47 @@ final class Answerer {
             }
         }
         writing = (id, task)
+    }
+
+    // MARK: Questions the reader asks
+
+    /// Answers a question the reader typed about this session, whether or not answers are on, in any mode.
+    func ask(_ question: String, in t: Transcript, mode: AssistantMode, language: OutputLanguage, name: (SpeakerID) -> String) {
+        let question = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty, service.isAskConfigured else { return }
+        askTask?.cancel()
+        // Its own id space, below any line's, so it never collides with an answer to a heard question.
+        let id = -Int((Date.now.timeIntervalSince1970 * 1000).truncatingRemainder(dividingBy: 1_000_000_000_000))
+        let conversation = t.summaryText(after: nil, closedOnly: false, limit: 12_000, name: name).text
+        let previous = t.answers.filter { $0.kind == "asked" }.suffix(3).map { (question: $0.question, answer: $0.answer) }
+        let user = AskPrompt.user(question: question, conversation: conversation, notes: t.summary?.text,
+                                  knowledge: knowledge.excerpts(for: question), previous: previous)
+        guard let request = service.askRequest(system: AskPrompt.system(language: language, mode: mode, role: role, extra: service.context),
+                                               user: user) else { return }
+        let endpoint = service.askEndpoint
+        let start = Live(session: t.id, id: id, question: question, polish: false, asked: true)
+        asking = start
+        panelShowsAnswers = true
+        askTask = Task {
+            defer { if asking?.id == id { asking = nil } }
+            do {
+                let reply = try await service.stream(request, via: endpoint) { [weak self] text in
+                    guard let self, self.asking?.id == id, let shown = AskPrompt.partial(text) else { return }
+                    self.asking?.text = shown.text
+                    self.asking?.source = shown.source
+                }
+                guard !Task.isCancelled, let answer = AskPrompt.parse(reply) else { return }
+                t.answers.append(QuestionAnswer(id: id, question: question, answer: answer.text,
+                                                fromKnowledge: answer.source == "knowledge", createdAt: .now,
+                                                kind: "asked", source: answer.source))
+                lastError = nil
+            } catch let error where Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                // Replaced by a newer question.
+            } catch {
+                lastError = error.localizedDescription
+                AudioLog.write("ask failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Stops the reply being written, if any; nothing from it is kept.
