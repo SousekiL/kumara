@@ -6,7 +6,7 @@ import SwiftUI
 /// the summary and the answers, floating over whatever app is in front, full-screen ones included.
 @MainActor
 final class AssistantDockController: NSObject {
-    nonisolated static let buttonSize = NSSize(width: 36, height: 70)
+    nonisolated static let buttonSize = NSSize(width: 38, height: 86)
     static let popupSize = NSSize(width: 380, height: 540)
     static let edgeInset: CGFloat = 6
 
@@ -184,13 +184,13 @@ private struct DockButton: View {
         VStack(spacing: 0) {
             // Top half: the summary and answers.
             Image(systemName: model.dockOpen ? "chevron.right" : "sparkles")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: 26, height: 28)
+                .frame(width: 28, height: 36)
                 .background(.white.opacity(hovered == .top ? 0.14 : 0))
                 .help(tr("Summary and answers · drag to move"))
-            Rectangle().fill(.white.opacity(0.12)).frame(width: 14, height: 0.5)
+            Rectangle().fill(.white.opacity(0.18)).frame(width: 14, height: 0.5)
             // Bottom half: the caption strip. Three dots that move with the sound; hollow when captions are hidden.
             HStack(alignment: .center, spacing: 3) {
                 ForEach(0..<3, id: \.self) { i in
@@ -202,12 +202,12 @@ private struct DockButton: View {
                                height: captions ? 3 + (live ? CGFloat(model.level) * (i == 1 ? 9 : 6) : 0) : 4)
                 }
             }
-            .frame(width: 26, height: 27.5)
+            .frame(width: 28, height: 35.5)
             .background(.white.opacity(hovered == .bottom ? 0.14 : 0))
             .animation(.smooth(duration: 0.18), value: model.level)
             .help(captions ? tr("Hide captions") : tr("Show captions"))
         }
-        .frame(width: 26, height: 56)
+        .frame(width: 28, height: 72)
         .clipShape(.capsule)
         // Dark on any background, like the system's own floating controls.
         .background(.black.opacity(hovered != nil || model.dockOpen ? 0.72 : 0.55), in: .capsule)
