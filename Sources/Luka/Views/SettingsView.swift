@@ -189,6 +189,15 @@ private struct CaptionSettings: View {
                     ForEach(CaptionStyle.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                if model.captionStyle == .dark {
+                    LabeledContent(tr("Background opacity")) {
+                        HStack {
+                            Slider(value: $model.captionBackgroundOpacity, in: AppModel.captionBackgroundRange, step: 0.05)
+                            Text(verbatim: "\(Int((model.captionBackgroundOpacity * 100).rounded()))%")
+                                .monospacedDigit().frame(width: 40, alignment: .trailing)
+                        }
+                    }
+                }
                 LabeledContent(tr("Text size")) {
                     HStack {
                         Slider(value: $model.captionFontSize, in: AppModel.captionFontRange, step: 2)

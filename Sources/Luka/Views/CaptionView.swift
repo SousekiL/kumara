@@ -55,7 +55,7 @@ struct CaptionRoot: View {
                 .frame(height: CaptionPanelController.toolbarHeight)
 
                 CaptionSurface(metrics: metrics)
-                    .lukaGlass(model.captionStyle.glass, in: .rect(cornerRadius: cornerRadius))
+                    .modifier(CaptionBackground(cornerRadius: cornerRadius))
                     .lukaGlassID("caption", in: glass)
                     .onHover { setHover($0) }
                     .overlay { ResizeHandles(metrics: metrics) }
@@ -200,7 +200,8 @@ struct CaptionRowView: View {
 
     private var text: Text {
         let size = row.isOriginal ? metrics.originalFontSize : metrics.fontSize
-        let solid = Text(row.solid).foregroundStyle(row.isOriginal ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+        // The original stays a step below the translation, but firm enough to read over any background.
+        let solid = Text(row.solid).foregroundStyle(row.isOriginal ? AnyShapeStyle(Color.primary.opacity(0.82)) : AnyShapeStyle(.primary))
         let faint = Text(row.faint).foregroundStyle(.tertiary)
         return Text("\(solid)\(faint)")
             .font(LukaFont.font(metrics.family, size: size, weight: row.isOriginal ? .regular : metrics.weight))
@@ -522,5 +523,22 @@ struct PinnedQuestion: View {
         .lukaGlass(.regular, in: .capsule)
         .padding(.horizontal, 24)
         .help(translated.isEmpty ? line.original : line.original + "\n" + translated)
+    }
+}
+
+/// The caption strip's background: Liquid Glass for Glass and Clear, and for Dark a black backing
+/// at the opacity the user set, like broadcast captions.
+struct CaptionBackground: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        if model.captionStyle == .dark {
+            content
+                .background(Color.black.opacity(model.captionBackgroundOpacity), in: .rect(cornerRadius: cornerRadius))
+        } else {
+            content
+                .lukaGlass(model.captionStyle.glass, in: .rect(cornerRadius: cornerRadius))
+        }
     }
 }

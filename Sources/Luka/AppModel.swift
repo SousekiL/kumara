@@ -177,6 +177,9 @@ final class AppModel {
     /// Weight of the main caption line. Regular by default: medium Chinese reads heavy over video.
     var captionWeight: CaptionWeight { didSet { store(captionWeight.rawValue, "captionWeight") } }
     var captionStyle: CaptionStyle { didSet { store(captionStyle.rawValue, "captionStyle") } }
+    /// How opaque the Dark style's black background is.
+    var captionBackgroundOpacity: Double { didSet { store(captionBackgroundOpacity, "captionBackgroundOpacity") } }
+    nonisolated static let captionBackgroundRange = 0.2...1.0
     var captionPinned: Bool { didSet { store(captionPinned, "captionPinned") } }
     var transcriptFontSize: Double { didSet { store(transcriptFontSize, "transcriptFontSize") } }
     var transcriptShowsOriginal: Bool { didSet { store(transcriptShowsOriginal, "transcriptShowsOriginal") } }
@@ -259,6 +262,7 @@ final class AppModel {
         captionWeight = CaptionWeight(rawValue: d.string(forKey: "captionWeight") ?? "") ?? .regular
         showsDockButton = d.object(forKey: "showsDockButton") as? Bool ?? true
         captionStyle = CaptionStyle(rawValue: d.string(forKey: "captionStyle") ?? "") ?? .glass
+        captionBackgroundOpacity = d.object(forKey: "captionBackgroundOpacity") as? Double ?? 0.7
         captionPinned = d.object(forKey: "captionPinned") as? Bool ?? true
         transcriptFontSize = d.object(forKey: "transcriptFontSize") as? Double ?? 15
         transcriptShowsOriginal = d.object(forKey: "transcriptShowsOriginal") as? Bool ?? true
