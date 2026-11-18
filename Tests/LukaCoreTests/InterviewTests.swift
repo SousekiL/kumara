@@ -439,7 +439,7 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
 
     @Test func promptAndParse() {
         let p = PolishPrompt.system(language: OutputLanguage("Simplified Chinese", spoken: "English"), role: "Data Scientist")
-        #expect(p.contains("a Data Scientist position") && p.contains("explanations in Simplified Chinese"))
+        #expect(p.contains("a Data Scientist position") && p.contains("Bullets in Simplified Chinese"))
         #expect(PolishPrompt.parse("SKIP") == nil)
         #expect(PolishPrompt.parse("I led the pricing project.\n- like → (drop)") != nil)
         #expect(PolishPrompt.user(question: "Q?", answer: "A", knowledge: "").contains("<question>\nQ?"))
