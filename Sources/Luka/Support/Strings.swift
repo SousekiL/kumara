@@ -199,6 +199,7 @@ enum Strings {
     ]
 
     static let zh: [String: String] = [
+        "Floating Button": "浮动按钮",
         "Background opacity": "背景不透明度",
         "Hide captions": "隐藏字幕",
         "Chinese font": "中文字体",

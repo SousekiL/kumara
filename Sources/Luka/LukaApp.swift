@@ -228,6 +228,7 @@ struct MenuBarContent: View {
         Divider()
         Toggle(tr("Captions"), isOn: Binding(get: { model.captionsVisible }, set: { model.setCaptions($0) }))
         Toggle(tr("Lock Captions"), isOn: Binding(get: { model.locked }, set: { model.lock($0) }))
+        Toggle(tr("Floating Button"), isOn: $model.showsDockButton)
         Button(tr("Show Transcript")) { model.openTranscript() }
         Button(tr("Shared Captions Window")) {
             NSApp.activate()
