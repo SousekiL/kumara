@@ -544,3 +544,19 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(!AssistantMode.lecture.scene.summary && !AssistantMode.lecture.scene.answers && AssistantMode.lecture.scene.polishes == nil)
     }
 }
+
+@Suite struct StreamBodyTests {
+    @Test func readsAStreamThatArrivedAsOneBody() throws {
+        let openAI = SummaryEndpoint(provider: .openAI, baseURL: "", model: "m")
+        let body = """
+        data: {"choices":[{"delta":{"content":"Hel"}}]}
+
+        data: {"choices":[{"delta":{"content":"lo"}}]}
+
+        data: [DONE]
+
+        """
+        #expect(try openAI.parseStreamBody(Data(body.utf8)) == "Hello")
+        #expect(try openAI.parseStreamBody(Data(#"{"choices":[]}"#.utf8)) == nil)
+    }
+}

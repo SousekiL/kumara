@@ -188,6 +188,25 @@ public struct SummaryEndpoint: Sendable, Equatable {
         return cleaned
     }
 
+    /// A whole streamed reply that arrived as one body, as from a gateway that streams without saying so.
+    /// Nil when the body isn't a stream.
+    public func parseStreamBody(_ data: Data) throws -> String? {
+        guard let body = String(data: data, encoding: .utf8), body.contains("data:") else { return nil }
+        var text = ""
+        var stop: String?
+        var sawEvent = false
+        reading: for line in body.split(whereSeparator: \.isNewline) {
+            switch streamChunk(String(line)) {
+            case .text(let more): text += more; sawEvent = true
+            case .stop(let reason): stop = reason; sawEvent = true
+            case .error(let message): throw ResponseError.api(message)
+            case .done: sawEvent = true; break reading
+            case nil: continue
+            }
+        }
+        return sawEvent ? try finish(streamed: text, stop: stop) : nil
+    }
+
     /// The reply text, or the API's own error message.
     public func parse(_ data: Data) throws -> String {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]

@@ -38,6 +38,14 @@ struct SessionSidebar: View {
         let createdAt: Date
         let preview: String
         let isLive: Bool
+
+        /// What the list shows. The day is already the section's heading, so an untitled
+        /// session goes by its time alone; a title the user gave is shown as it is.
+        var label: String {
+            title == AppModel.defaultTitle(createdAt)
+                ? createdAt.formatted(Date.FormatStyle(time: .shortened).locale(Localizer.shared.locale))
+                : title
+        }
     }
 
     private var rows: [Row] {
@@ -130,7 +138,7 @@ private struct SessionRow: View {
                         .onAppear { draft = row.title; focused = true }
                         .onChange(of: focused) { if !focused { commit() } }
                 } else {
-                    Text(row.title)
+                    Text(row.label)
                         .font(.body.weight(.medium))
                         .lineLimit(1)
                 }
@@ -360,16 +368,21 @@ struct SessionView: View {
                 Button(tr("Export Transcript…")) { model.exportTranscript(transcript) }
                     .disabled(transcript.lines.isEmpty)
                 Divider()
+                // Settings live here and under ⌘, so the toolbar keeps to what's used during a session.
+                Button(tr("Settings…")) { model.openSettings() }
+                Divider()
                 Button(tr("Delete Session…"), role: .destructive) { confirmingDelete = true }
                     .disabled(transcript.lines.isEmpty && isLive)
             } label: {
                 Label(tr("More"), systemImage: "ellipsis")
             }
             .menuIndicator(.hidden)
-            Button { model.openSettings() } label: {
-                Label(tr("Settings…"), systemImage: "gearshape")
-            }
-            .help(tr("Settings…") + "  ⌘,")
+        }
+        if #available(macOS 26, *) {
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+        }
+        // The assistant column's switch stands apart at the end, above the column it opens.
+        ToolbarItemGroup(placement: .primaryAction) {
             Toggle(isOn: Binding(get: { model.summarizer.panelShown }, set: { model.summarizer.panelShown = $0 }).animation(.smooth)) {
                 Label(tr("Assistant"), systemImage: "sidebar.trailing")
             }
@@ -418,7 +431,7 @@ struct TurnView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: size * 0.7) {
                 let liveJoinsLine = turn.lines.last.map { $0.isOpen && $0.id == transcript.lines.last?.id } ?? false
                 ForEach(turn.lines) { line in
                     if editing {
@@ -470,7 +483,8 @@ struct LineView: View {
 
     var body: some View {
         let live = provisional?.text ?? ""
-        VStack(alignment: .leading, spacing: 3) {
+        // The translation leads; the original sits under it, smaller and quieter, close enough to read as one pair.
+        VStack(alignment: .leading, spacing: size * 0.25) {
             if line.expectsTranslation {
                 let pending = [line.pendingOriginal, live].filter { !$0.isEmpty }.joined(separator: " ")
                 if !line.translatedText.isEmpty || pending.isEmpty {
@@ -480,8 +494,9 @@ struct LineView: View {
                 }
                 if showOriginal {
                     Text("\(Text(line.original))\(Text(live.isEmpty ? "" : (line.original.isEmpty ? live : " " + live)).foregroundStyle(.tertiary))")
-                        .font(LukaFont.font(family, size: max(10, size - 2)))
+                        .font(LukaFont.font(family, size: Self.originalSize(size)))
                         .foregroundStyle(.secondary)
+                        .lineSpacing(Self.originalSize(size) * 0.22)
                 } else if !pending.isEmpty {
                     Text(pending)
                         .font(LukaFont.font(family, size: size))
@@ -492,9 +507,13 @@ struct LineView: View {
                     .font(LukaFont.font(family, size: size))
             }
         }
-        .lineSpacing(size * 0.18)
+        // Chinese reads better with a little more air between lines than Latin text needs.
+        .lineSpacing(size * 0.26)
         .fixedSize(horizontal: false, vertical: true)
     }
+
+    /// The original under a translation: about four-fifths the size, so the two never compete.
+    static func originalSize(_ size: Double) -> Double { max(11, (size * 0.82).rounded()) }
 }
 
 private struct EditableLine: View {
@@ -517,7 +536,7 @@ private struct EditableLine: View {
                         }
                     }
                     if showOriginal {
-                        field(Binding(get: { line.original }, set: { [transcript, id = line.id] in transcript.edit(line: id, original: $0) }), size: max(10, size - 2), secondary: true)
+                        field(Binding(get: { line.original }, set: { [transcript, id = line.id] in transcript.edit(line: id, original: $0) }), size: LineView.originalSize(size), secondary: true)
                     }
                 } else {
                     field(Binding(get: { line.original }, set: { [transcript, id = line.id] in transcript.edit(line: id, original: $0) }), size: size)

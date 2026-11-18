@@ -111,6 +111,8 @@ final class AssistantService {
         } catch let error as SummaryEndpoint.ResponseError {
             throw error
         } catch {
+            // Some gateways stream without saying so: the body is the stream itself.
+            if let text = try endpoint.parseStreamBody(data) { return text }
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw SummaryEndpoint.ResponseError.api(String(format: tr("The summary model replied with HTTP %d."), code))
         }

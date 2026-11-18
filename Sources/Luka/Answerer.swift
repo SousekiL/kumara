@@ -19,6 +19,8 @@ final class Answerer {
 
     /// A reply still coming in, shown as it is written.
     struct Live: Equatable {
+        /// The session it belongs to.
+        let session: UUID
         /// The line the question was asked in.
         let id: Int
         let question: String
@@ -37,6 +39,7 @@ final class Answerer {
             defaults.set(enabled, forKey: "answers.enabled")
             // Start from now: questions asked before it was turned on stay unanswered.
             sessionID = nil
+            if !enabled { stop() }
             if enabled { reload() }
             onEnabledChange()
         }
@@ -71,6 +74,8 @@ final class Answerer {
     @ObservationIgnored private var handled: Set<Int> = []
     @ObservationIgnored private var sessionID: UUID?
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
+    /// The reply being written, so a new session or turning answers off can stop it.
+    @ObservationIgnored private var writing: (id: UUID, task: Task<Void, Never>)?
 
     init(service: AssistantService) {
         self.service = service
@@ -141,6 +146,8 @@ final class Answerer {
     func tick(_ t: Transcript, mode: AssistantMode, language: OutputLanguage, channelsOnly: Bool, name: (SpeakerID) -> String) {
         guard enabled, service.isConfigured else { return }
         if sessionID != t.id {
+            // A reply for the session before has no place in this one.
+            stop()
             sessionID = t.id
             handled = Set(t.lines.map(\.id))
         }
@@ -159,7 +166,7 @@ final class Answerer {
                                      previous: previous)
         guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.note),
                                             user: user, maxTokens: 4_000, stream: true) else { return }
-        write(request, into: t, live: Live(id: line.id, question: line.original, polish: false))
+        write(request, into: t, live: Live(session: t.id, id: line.id, question: line.original, polish: false))
     }
 
     /// A smoother way to say the answer I just finished, and quick fixes. Interview mode with Me / Them only.
@@ -170,17 +177,22 @@ final class Answerer {
                                      knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
         guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.note),
                                             user: user, maxTokens: 3_000, stream: true) else { return }
-        write(request, into: t, live: Live(id: id, question: answer.text, polish: true))
+        write(request, into: t, live: Live(session: t.id, id: id, question: answer.text, polish: true))
     }
 
     /// Streams the reply into `live` as it is written, then files it with the session's answers.
     private func write(_ request: URLRequest, into t: Transcript, live start: Live) {
         working = true
         live = start
-        Task {
+        let id = UUID()
+        let task = Task {
             defer {
-                working = false
-                live = nil
+                // Only if this is still the current reply: one that was stopped has been cleared already.
+                if writing?.id == id {
+                    writing = nil
+                    working = false
+                    live = nil
+                }
             }
             do {
                 let reply = try await service.stream(request) { [weak self] text in
@@ -195,6 +207,7 @@ final class Answerer {
                         self.live?.kind = shown.kind
                     }
                 }
+                guard !Task.isCancelled else { return }
                 lastError = nil
                 let item: QuestionAnswer
                 if start.polish {
@@ -211,11 +224,23 @@ final class Answerer {
             } catch SummaryEndpoint.ResponseError.empty {
                 // An empty reply is the model having nothing to add, not a failure.
                 lastError = nil
+            } catch let error where Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                // Stopped on purpose.
             } catch {
                 lastError = error.localizedDescription
                 AudioLog.write("\(start.polish ? "polish" : "answer") failed: \(error.localizedDescription)")
             }
         }
+        writing = (id, task)
+    }
+
+    /// Stops the reply being written, if any; nothing from it is kept.
+    func stop() {
+        guard let writing else { return }
+        writing.task.cancel()
+        self.writing = nil
+        working = false
+        live = nil
     }
 }
 

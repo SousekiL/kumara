@@ -44,7 +44,7 @@ struct SummaryPanel: View {
                     VStack(alignment: .leading, spacing: 0) { answers }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Self.inset)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 16)
                 }
                 .onChange(of: transcript.answers.count, initial: true) { seenAnswers = transcript.answers.count }
             } else {
@@ -65,7 +65,7 @@ struct SummaryPanel: View {
                     summary
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Self.inset)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 16)
                 }
                 // Opening a session shows where the notes end; an overview reads from the top.
                 .defaultScrollAnchor(mode.rewritesSummary ? .top : .bottom, for: .initialOffset)
@@ -116,11 +116,10 @@ struct SummaryPanel: View {
     }
 
     private func setupHint(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(text).foregroundStyle(.secondary)
+        EmptyNote(symbol: "gearshape", text: text) {
             Button(tr("Open Settings…")) { model.openSettings() }
+                .controlSize(.small)
         }
-        .font(.callout)
     }
 
     // MARK: Summary
@@ -162,13 +161,9 @@ struct SummaryPanel: View {
         } else if !model.assistant.isConfigured {
             setupHint(tr("Pick a model for the summary in Settings › Assistant."))
         } else if !summarizer.enabled {
-            Text(tr("The summary is off. Turn it on with the switch above."))
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            EmptyNote(symbol: "text.alignleft", text: tr("The summary is off. Turn it on with the switch above."))
         } else {
-            Text(tr("Notes appear here a few sentences in, and keep growing as the conversation goes on."))
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            EmptyNote(symbol: "list.bullet.rectangle", text: tr("Notes appear here a few sentences in, and keep growing as the conversation goes on."))
         }
     }
 
@@ -231,20 +226,16 @@ struct SummaryPanel: View {
         } else if !model.assistant.isConfigured {
             setupHint(tr("Pick a model for the answers in Settings › Assistant."))
         } else if !answerer.enabled {
-            Text(tr("Answers are off. Turn them on with the switch above."))
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            EmptyNote(symbol: "bubble.left.and.text.bubble.right", text: tr("Answers are off. Turn them on with the switch above."))
         } else {
-            Text(tr("When someone asks a question, a short answer and hints appear here."))
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            EmptyNote(symbol: "questionmark.bubble", text: tr("When someone asks a question, a short answer and hints appear here."))
         }
     }
 
     /// The session's answers, newest first, led by the one being written.
     private var answerRows: [AnswerRow] {
         var rows = transcript.answers.reversed().map(AnswerRow.init)
-        if let live = answerer.live, model.isLive(transcript), !rows.contains(where: { $0.id == live.id }) {
+        if let live = answerer.live, live.session == transcript.id, !rows.contains(where: { $0.id == live.id }) {
             rows.insert(AnswerRow(live), at: 0)
         }
         return rows
@@ -531,6 +522,37 @@ private struct KindTag: View {
     }
 }
 
+/// What an empty column says: a quiet symbol and one line, centered, with an optional action.
+private struct EmptyNote<Action: View>: View {
+    let symbol: String
+    let text: String
+    @ViewBuilder var action: () -> Action
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            action()
+        }
+        .frame(maxWidth: 260)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 56)
+    }
+}
+
+extension EmptyNote where Action == EmptyView {
+    init(symbol: String, text: String) {
+        self.init(symbol: symbol, text: text) { EmptyView() }
+    }
+}
+
 /// A tab in the column's header: plain text, underlined when chosen.
 private struct PanelTab: View {
     let title: String
@@ -557,6 +579,7 @@ private struct PanelTab: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

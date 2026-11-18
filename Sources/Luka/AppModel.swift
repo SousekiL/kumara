@@ -91,16 +91,40 @@ final class AppModel {
     var audioSource: AudioSource {
         didSet {
             store(audioSource.rawValue, "audioSource")
+            // Me / Them switching it does its own rerouting; a source picked by hand is the user's from now on.
+            guard !switchingSource else { return }
+            sourceBeforeSeparating = nil
             if separatesSpeakers { routingChanged() } else { audioSourceChanged() }
         }
+    }
+    @ObservationIgnored private var switchingSource = false
+    /// The source Me / Them replaced with Mac audio + microphone, put back when it goes off,
+    /// so leaving Meeting or Interview mode doesn't leave the microphone on.
+    private var sourceBeforeSeparating: AudioSource? {
+        get { defaults.string(forKey: "sourceBeforeSeparating").flatMap(AudioSource.init(rawValue:)) }
+        set { defaults.set(newValue?.rawValue, forKey: "sourceBeforeSeparating") }
     }
     /// Me / Them: with Mac audio + microphone, transcribe each on its own stream, so the microphone
     /// is always you and the Mac audio is always them. Costs a second stream.
     var separatesSpeakers: Bool {
         didSet {
             store(separatesSpeakers, "separatesSpeakers")
-            // It only works with both sources, so turning it on picks them; that change reroutes by itself.
-            if separatesSpeakers, audioSource != .both, mode != .threeWay { audioSource = .both } else { routingChanged() }
+            // It only works with both sources, so turning it on picks them, and turning it off puts back what was there.
+            if separatesSpeakers, audioSource != .both, mode != .threeWay {
+                let previous = audioSource
+                switchingSource = true
+                audioSource = .both
+                switchingSource = false
+                sourceBeforeSeparating = previous
+            } else if !separatesSpeakers, let previous = sourceBeforeSeparating {
+                sourceBeforeSeparating = nil
+                if audioSource == .both {
+                    switchingSource = true
+                    audioSource = previous
+                    switchingSource = false
+                }
+            }
+            routingChanged()
         }
     }
     /// Sets what the mode turns on and off: the summary, the answers, Me / Them, the pinned question
