@@ -232,6 +232,12 @@ final class AppModel {
     var showsDockButton: Bool { didSet { store(showsDockButton, "showsDockButton") } }
     /// Whether the edge button's panel is open.
     var dockOpen = false
+
+    /// The global shortcut for the floating card: only while its button is on screen.
+    func toggleDock() {
+        guard showsDockButton, status != .idle else { return }
+        dockOpen.toggle()
+    }
     /// An answer arrived while the panel was closed.
     var dockBadge = false
     /// Font family for captions, the transcript and the summary; empty is the system font.

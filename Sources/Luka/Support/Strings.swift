@@ -595,5 +595,6 @@ enum Strings {
         "Type a question at the bottom of the summary column, in the transcript window or the floating card; the answer shows under Answers and draws on this session’s transcript, its notes and your knowledge base. Off: the same model as above. Think deeply turns on extended thinking for Claude and the highest reasoning effort for OpenAI-compatible models; answers take longer. If a model doesn’t accept a setting, it steps down to one it does.": "在转写窗口或浮动面板的总结栏底部输入问题，回答显示在“回答”里，依据本次会话的转写、笔记和你的知识库。关闭时用上面同一个模型。深度思考会为 Claude 打开扩展思考、为 OpenAI 兼容模型设最高推理强度，回答会慢一些；模型不支持某种设置时会自动换成它支持的。",
         "Use a separate model": "使用单独的模型",
         "You asked": "你问的",
+        "Show / hide the floating summary and answers": "显示 / 隐藏浮动的总结和回答面板",
     ]
 }

@@ -378,7 +378,7 @@ extension AppModel.Status {
 
 /// Luka's system-wide shortcuts. ⌃⌥ + a letter works from any app; Fn is left alone.
 enum GlobalShortcut: CaseIterable {
-    case newSession, toggle, captions, transcript, lock
+    case newSession, toggle, captions, transcript, lock, dock
 
     var keys: [String] {
         switch self {
@@ -387,6 +387,7 @@ enum GlobalShortcut: CaseIterable {
         case .captions: ["⌃", "⌥", "C"]
         case .transcript: ["⌃", "⌥", "T"]
         case .lock: ["⌃", "⌥", "L"]
+        case .dock: ["⌃", "⌥", "A"]
         }
     }
 
@@ -397,6 +398,7 @@ enum GlobalShortcut: CaseIterable {
         case .captions: tr("Show / hide captions")
         case .transcript: tr("Show / hide transcript")
         case .lock: tr("Lock / unlock captions")
+        case .dock: tr("Show / hide the floating summary and answers")
         }
     }
 

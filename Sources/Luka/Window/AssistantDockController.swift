@@ -192,7 +192,7 @@ private struct DockButton: View {
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: 28, height: 36)
                 .background(.white.opacity(hovered == .top ? 0.14 : 0))
-                .help(tr("Summary and answers · drag to move"))
+                .help(tr("Summary and answers · drag to move") + "  " + GlobalShortcut.dock.text)
             Rectangle().fill(.white.opacity(0.18)).frame(width: 14, height: 0.5)
             // Bottom half: the caption strip. Three dots that move with the sound; hollow when captions are hidden.
             HStack(alignment: .center, spacing: 3) {
