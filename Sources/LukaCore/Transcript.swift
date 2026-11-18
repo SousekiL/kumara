@@ -208,6 +208,8 @@ public final class Transcript: Identifiable {
         nextColor = s.nextColor
         summary = s.summary
         answers = s.answers ?? []
+        // Continue numbering Them streams past the saved ones, so new people aren't taken for earlier ones.
+        themEpoch = max(themEpoch, speakers.keys.filter { $0.label.hasPrefix(Channel.themPrefix) }.map(\.epoch).max() ?? 0)
     }
 
     public var snapshot: TranscriptSnapshot {
@@ -253,7 +255,10 @@ public final class Transcript: Identifiable {
             switch channel {
             case .me: speaker = register(channel: .me)
             // The other side can be several people: keep Soniox's labels apart within the channel.
-            case .them: speaker = token.speaker.map { registerThem(label: $0) } ?? register(channel: .them)
+            // A token without a label (some translations) belongs to whoever on that side spoke last.
+            case .them: speaker = token.speaker.map { registerThem(label: $0) }
+                ?? lines.last(where: { Channel($0.speaker) == .them })?.speaker
+                ?? register(channel: .them)
             case nil: speaker = token.speaker.map { register(label: $0) }
             }
             if token.isFinal {

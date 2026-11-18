@@ -29,6 +29,21 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(them == [1, 2])
     }
 
+    @Test func unlabeledThemTranslationGoesToTheLastThemSpeaker() {
+        let t = Transcript()
+        t.beginStream(channel: .them)
+        t.ingest(tokens([("How are you?", true, "original"), ("<end>", true, nil)], speaker: "2"), channel: .them)
+        t.ingest(tokens([("Fine, thanks for asking today.", true, "original")]), channel: .me)
+        t.ingest(SonioxResponse(tokens: [SonioxToken(text: "你好吗？", isFinal: true, language: "zh", translationStatus: "translation")]), channel: .them)
+        #expect(t.lines[0].translation == "你好吗？" && t.lines[1].translation.isEmpty)
+        #expect(t.visibleSpeakers.count == 2)
+
+        let back = Transcript(snapshot: t.snapshot)
+        back.beginStream(channel: .them)
+        back.ingest(tokens([("New voice.", true, nil)], speaker: "2"), channel: .them)
+        #expect(back.lines.last?.speaker != back.lines[0].speaker)
+    }
+
     @Test func aNewThemStreamMeansNewPeople() {
         let t = Transcript()
         t.beginStream(channel: .them)

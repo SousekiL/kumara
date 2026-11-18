@@ -354,7 +354,6 @@ final class AppModel {
                 self?.flushUsage()
             }
         }
-        syncInterviewChannels()
     }
 
     func applyActivationPolicy() {
