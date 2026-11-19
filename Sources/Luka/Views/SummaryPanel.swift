@@ -15,74 +15,42 @@ struct SummaryPanel: View {
 
     var body: some View {
         @Bindable var answerer = model.answerer
-        @Bindable var summarizer = model.summarizer
         let unseen = max(0, transcript.answers.count - seenAnswers)
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
-                PanelTab(title: tr("Summary"), selected: !answerer.panelShowsAnswers, badge: false) {
-                    answerer.panelShowsAnswers = false
-                }
-                PanelTab(title: tr("Answers"), selected: answerer.panelShowsAnswers, badge: unseen > 0 || answerer.live?.text != nil) {
-                    answerer.panelShowsAnswers = true
+                if !model.panelStacked {
+                    PanelTab(title: tr("Summary"), selected: !answerer.panelShowsAnswers, badge: false) {
+                        answerer.panelShowsAnswers = false
+                    }
+                    PanelTab(title: tr("Answers"), selected: answerer.panelShowsAnswers, badge: unseen > 0 || answerer.live?.text != nil) {
+                        answerer.panelShowsAnswers = true
+                    }
                 }
                 Spacer(minLength: 4)
+                // Tabs, or the summary above the answers so both are in view at once.
+                Button { model.panelStacked.toggle() } label: {
+                    Image(systemName: model.panelStacked ? "rectangle.split.1x2.fill" : "rectangle.split.1x2")
+                        .foregroundStyle(model.panelStacked ? AnyShapeStyle(LukaTheme.accent) : AnyShapeStyle(.secondary))
+                }
+                .buttonStyle(.borderless)
+                .help(model.panelStacked ? tr("Show summary and answers as tabs") : tr("Show summary above answers"))
                 // The kind of conversation: choosing one sets which helpers are on.
                 ModeChip()
             }
             .padding(.horizontal, Self.inset)
             .frame(height: 40)
-            if answerer.panelShowsAnswers {
-                bar { answersStatus } actions: {
-                    ProgressView().controlSize(.small).opacity(answerer.working ? 1 : 0)
-                    Toggle("", isOn: $answerer.enabled)
-                        .toggleStyle(.switch).controlSize(.mini).labelsHidden()
-                        .help(tr("Answer questions as they’re asked"))
+            if model.panelStacked {
+                // Both at once, the divider draggable.
+                VSplitView {
+                    VStack(spacing: 0) { summarySection(titled: true) }
+                        .frame(minHeight: 120, maxHeight: .infinity)
+                    VStack(spacing: 0) { answersSection(titled: true) }
+                        .frame(minHeight: 120, maxHeight: .infinity)
                 }
-                Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) { answers }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, Self.inset)
-                        .padding(.vertical, 16)
-                }
-                .onChange(of: transcript.answers.count, initial: true) { seenAnswers = transcript.answers.count }
+            } else if answerer.panelShowsAnswers {
+                answersSection(titled: false)
             } else {
-                bar { summaryStatus } actions: {
-                    ProgressView().controlSize(.small).opacity(summarizer.working || summarizer.recapping ? 1 : 0)
-                    // One request, only when pressed: what was just said, for when attention slipped.
-                    Button { model.catchMeUp(transcript) } label: { Image(systemName: "clock.arrow.circlepath") }
-                        .help(tr("Catch me up: what was just said"))
-                        .disabled(!model.assistant.isConfigured || summarizer.recapping || transcript.lines.isEmpty)
-                    Button { model.refreshSummary(transcript) } label: { Image(systemName: "arrow.clockwise") }
-                        .help(tr("Write the notes again from the whole transcript"))
-                        .disabled(!model.assistant.isConfigured || summarizer.working || transcript.lines.isEmpty)
-                    Button { copy(transcript.summary?.text, notice: tr("Copied summary")) } label: { Image(systemName: "doc.on.doc") }
-                        .help(tr("Copy Summary"))
-                        .disabled(transcript.summary == nil)
-                    Toggle("", isOn: $summarizer.enabled)
-                        .toggleStyle(.switch).controlSize(.mini).labelsHidden()
-                        .help(tr("Summarize while listening"))
-                }
-                Divider()
-                ScrollView {
-                    summary
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, Self.inset)
-                        .padding(.vertical, 16)
-                }
-                // Opening a session shows where the notes end.
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
-                // Notes grow at the bottom: follow them, like the transcript, unless the reader has scrolled up.
-                .scrollPosition($notesPosition)
-                .onScrollGeometryChange(for: Bool.self) { geo in
-                    geo.contentOffset.y + geo.containerSize.height >= geo.contentSize.height - 60
-                } action: { _, atBottom in
-                    followingNotes = atBottom
-                }
-                .onChange(of: transcript.summary?.text) {
-                    guard followingNotes else { return }
-                    notesPosition.scrollTo(edge: .bottom)
-                }
+                summarySection(titled: false)
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -98,9 +66,70 @@ struct SummaryPanel: View {
     /// Side margin for everything in the column, so headers and text share one left edge.
     static let inset: CGFloat = 16
 
+    @ViewBuilder private func answersSection(titled: Bool) -> some View {
+        @Bindable var answerer = model.answerer
+        bar(title: titled ? tr("Answers") : nil) { answersStatus } actions: {
+            ProgressView().controlSize(.small).opacity(answerer.working ? 1 : 0)
+            Toggle("", isOn: $answerer.enabled)
+                .toggleStyle(.switch).controlSize(.mini).labelsHidden()
+                .help(tr("Answer questions as they’re asked"))
+        }
+        Divider()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) { answers }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Self.inset)
+                .padding(.vertical, 16)
+        }
+        .onChange(of: transcript.answers.count, initial: true) { seenAnswers = transcript.answers.count }
+    }
+
+    @ViewBuilder private func summarySection(titled: Bool) -> some View {
+        @Bindable var summarizer = model.summarizer
+        bar(title: titled ? tr("Summary") : nil) { summaryStatus } actions: {
+            ProgressView().controlSize(.small).opacity(summarizer.working || summarizer.recapping ? 1 : 0)
+            // One request, only when pressed: what was just said, for when attention slipped.
+            Button { model.catchMeUp(transcript) } label: { Image(systemName: "clock.arrow.circlepath") }
+                .help(tr("Catch me up: what was just said"))
+                .disabled(!model.assistant.isConfigured || summarizer.recapping || transcript.lines.isEmpty)
+            Button { model.refreshSummary(transcript) } label: { Image(systemName: "arrow.clockwise") }
+                .help(tr("Write the notes again from the whole transcript"))
+                .disabled(!model.assistant.isConfigured || summarizer.working || transcript.lines.isEmpty)
+            Button { copy(transcript.summary?.text, notice: tr("Copied summary")) } label: { Image(systemName: "doc.on.doc") }
+                .help(tr("Copy Summary"))
+                .disabled(transcript.summary == nil)
+            Toggle("", isOn: $summarizer.enabled)
+                .toggleStyle(.switch).controlSize(.mini).labelsHidden()
+                .help(tr("Summarize while listening"))
+        }
+        Divider()
+        ScrollView {
+            summary
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Self.inset)
+                .padding(.vertical, 16)
+        }
+        // Opening a session shows where the notes end.
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        // Notes grow at the bottom: follow them, like the transcript, unless the reader has scrolled up.
+        .scrollPosition($notesPosition)
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            geo.contentOffset.y + geo.containerSize.height >= geo.contentSize.height - 60
+        } action: { _, atBottom in
+            followingNotes = atBottom
+        }
+        .onChange(of: transcript.summary?.text) {
+            guard followingNotes else { return }
+            notesPosition.scrollTo(edge: .bottom)
+        }
+    }
+
     /// One row under the tabs: what this is and how fresh, with its actions on the right.
-    private func bar(@ViewBuilder status: () -> some View, @ViewBuilder actions: () -> some View) -> some View {
+    private func bar(title: String? = nil, @ViewBuilder status: () -> some View, @ViewBuilder actions: () -> some View) -> some View {
         HStack(alignment: .center, spacing: 10) {
+            if let title {
+                Text(title).font(.system(size: 13, weight: .semibold)).fixedSize()
+            }
             status()
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -230,6 +230,8 @@ final class AppModel {
     }
     /// The edge button for the summary and answers, shown while listening.
     var showsDockButton: Bool { didSet { store(showsDockButton, "showsDockButton") } }
+    /// The summary column shows the summary above the answers instead of as tabs.
+    var panelStacked: Bool { didSet { store(panelStacked, "panelStacked") } }
     /// Whether the edge button's panel is open.
     var dockOpen = false
 
@@ -373,6 +375,7 @@ final class AppModel {
         LukaFont.cjkFamily = d.string(forKey: "cjkFontFamily") ?? ""
         captionWeight = CaptionWeight(rawValue: d.string(forKey: "captionWeight") ?? "") ?? .regular
         showsDockButton = d.object(forKey: "showsDockButton") as? Bool ?? true
+        panelStacked = d.bool(forKey: "panelStacked")
         captionStyle = CaptionStyle(rawValue: d.string(forKey: "captionStyle") ?? "") ?? .glass
         captionBackgroundOpacity = d.object(forKey: "captionBackgroundOpacity") as? Double ?? 0.7
         captionPinned = d.object(forKey: "captionPinned") as? Bool ?? true

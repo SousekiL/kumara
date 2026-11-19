@@ -596,5 +596,7 @@ enum Strings {
         "Use a separate model": "使用单独的模型",
         "You asked": "你问的",
         "Show / hide the floating summary and answers": "显示 / 隐藏浮动的总结和回答面板",
+        "Show summary and answers as tabs": "总结和回答分标签显示",
+        "Show summary above answers": "总结在上、回答在下，同时显示",
     ]
 }
