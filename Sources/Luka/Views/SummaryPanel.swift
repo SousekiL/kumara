@@ -40,12 +40,11 @@ struct SummaryPanel: View {
             .padding(.horizontal, Self.inset)
             .frame(height: 40)
             if model.panelStacked {
-                // Both at once, the divider draggable.
-                VSplitView {
-                    VStack(spacing: 0) { summarySection(titled: true) }
-                        .frame(minHeight: 120, maxHeight: .infinity)
-                    VStack(spacing: 0) { answersSection(titled: true) }
-                        .frame(minHeight: 120, maxHeight: .infinity)
+                // Both at once; the answers get the larger share, and the divider drags.
+                StackedSplit(fraction: Bindable(model).panelSplit) {
+                    summarySection(titled: true)
+                } bottom: {
+                    answersSection(titled: true)
                 }
             } else if answerer.panelShowsAnswers {
                 answersSection(titled: false)
@@ -973,6 +972,47 @@ private struct AskBar: View {
         guard canSend else { return }
         model.ask(draft, in: transcript)
         draft = ""
+    }
+}
+
+/// Two panes, one above the other, split at a fraction the reader drags.
+private struct StackedSplit<Top: View, Bottom: View>: View {
+    @Binding var fraction: Double
+    @ViewBuilder var top: Top
+    @ViewBuilder var bottom: Bottom
+    @State private var start: Double?
+
+    var body: some View {
+        GeometryReader { geo in
+            let height = geo.size.height
+            VStack(spacing: 0) {
+                VStack(spacing: 0) { top }
+                    .frame(height: max(0, height * fraction - 4))
+                    .clipped()
+                // The handle: a line with room to grab it.
+                ZStack {
+                    Rectangle().fill(.clear)
+                    Divider()
+                    Capsule().fill(.tertiary).frame(width: 34, height: 4)
+                }
+                .frame(height: 8)
+                .contentShape(.rect)
+                .onHover { inside in
+                    if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+                }
+                .gesture(DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        let base = start ?? fraction
+                        if start == nil { start = base }
+                        guard height > 0 else { return }
+                        fraction = min(max(base + value.translation.height / height, 0.15), 0.85)
+                    }
+                    .onEnded { _ in start = nil })
+                VStack(spacing: 0) { bottom }
+                    .frame(maxHeight: .infinity)
+                    .clipped()
+            }
+        }
     }
 }
 

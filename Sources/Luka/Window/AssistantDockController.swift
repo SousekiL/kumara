@@ -70,8 +70,10 @@ final class AssistantDockController: NSObject {
     private func popupFrame() -> NSRect {
         let visible = screen.visibleFrame
         let b = button.frame
+        // Stacked, the summary and the answers share the card: give it most of the screen's height.
+        let height = model.panelStacked ? max(Self.popupSize.height, min(900, visible.height * 0.86)) : Self.popupSize.height
         let size = NSSize(width: min(Self.popupSize.width, visible.width - b.width - 40),
-                          height: min(Self.popupSize.height, visible.height - 24))
+                          height: min(height, visible.height - 24))
         let y = min(max(b.midY - size.height / 2, visible.minY + 12), visible.maxY - size.height - 12)
         return NSRect(x: b.minX - 10 - size.width, y: y, width: size.width, height: size.height)
     }
@@ -83,6 +85,7 @@ final class AssistantDockController: NSObject {
             _ = model.status
             _ = model.showsDockButton
             _ = model.dockOpen
+            _ = model.panelStacked
             _ = model.captionStyle
         } onChange: { [weak self] in
             DispatchQueue.main.async {

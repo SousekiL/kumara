@@ -232,6 +232,8 @@ final class AppModel {
     var showsDockButton: Bool { didSet { store(showsDockButton, "showsDockButton") } }
     /// The summary column shows the summary above the answers instead of as tabs.
     var panelStacked: Bool { didSet { store(panelStacked, "panelStacked") } }
+    /// In the stacked layout, the summary's share of the height; the answers get the rest.
+    var panelSplit: Double { didSet { store(panelSplit, "panelSplit") } }
     /// Whether the edge button's panel is open.
     var dockOpen = false
 
@@ -376,6 +378,7 @@ final class AppModel {
         captionWeight = CaptionWeight(rawValue: d.string(forKey: "captionWeight") ?? "") ?? .regular
         showsDockButton = d.object(forKey: "showsDockButton") as? Bool ?? true
         panelStacked = d.bool(forKey: "panelStacked")
+        panelSplit = d.object(forKey: "panelSplit") as? Double ?? 0.38
         captionStyle = CaptionStyle(rawValue: d.string(forKey: "captionStyle") ?? "") ?? .glass
         captionBackgroundOpacity = d.object(forKey: "captionBackgroundOpacity") as? Double ?? 0.7
         captionPinned = d.object(forKey: "captionPinned") as? Bool ?? true
