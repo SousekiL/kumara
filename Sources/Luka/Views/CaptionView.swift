@@ -54,18 +54,34 @@ struct CaptionRoot: View {
                 }
                 .frame(height: CaptionPanelController.toolbarHeight)
 
-                CaptionSurface(metrics: metrics)
-                    .modifier(CaptionBackground(cornerRadius: cornerRadius))
-                    .lukaGlassID("caption", in: glass)
-                    .onHover { setHover($0) }
-                    .overlay { ResizeHandles(metrics: metrics) }
-                    .environment(\.colorScheme, model.captionStyle == .dark ? .dark : colorScheme)
+                if model.captionLayout.showsCaptions {
+                    CaptionSurface(metrics: metrics)
+                        .modifier(CaptionBackground(cornerRadius: cornerRadius))
+                        .lukaGlassID("caption", in: glass)
+                        .onHover { setHover($0) }
+                        .overlay { ResizeHandles(metrics: metrics) }
+                        .environment(\.colorScheme, model.captionStyle == .dark ? .dark : colorScheme)
+                }
+                if model.captionLayout.showsAnswers {
+                    // The answers, under the captions or in their place.
+                    SummaryPanel(transcript: model.transcript, answersOnly: true)
+                        .id(model.cjkFontFamily)
+                        .frame(height: model.captionAnswersHeight)
+                        .clipShape(.rect(cornerRadius: 18))
+                        .modifier(CaptionBackground(cornerRadius: 18))
+                        .lukaGlassID("answers", in: glass)
+                        .onHover { setHover($0) }
+                        .overlay { AnswerResizeHandles() }
+                        .tint(LukaTheme.accent)
+                        .environment(\.colorScheme, model.captionStyle == .dark ? .dark : colorScheme)
+                }
             }
         }
         .animation(.smooth(duration: 0.3), value: showToolbar)
         .animation(.smooth(duration: 0.3), value: showStatus)
         .animation(.smooth(duration: 0.3), value: question?.id)
         .animation(.smooth(duration: 0.3), value: model.notice)
+        .animation(.smooth(duration: 0.3), value: model.captionLayout)
         .environment(\.usesGlass, model.usesGlass)
         .popover(item: Binding(get: { model.renaming?.place == .caption ? model.renaming : nil },
                                set: { if $0 == nil { model.renaming = nil } }),
@@ -353,6 +369,25 @@ struct CaptionToolbar: View {
                 .fixedSize()
                 .help(tr("Caption appearance"))
 
+                // Captions, captions with the answers under them, or the answers alone.
+                Menu {
+                    Picker(tr("Show"), selection: Bindable(model).captionLayout) {
+                        ForEach(CaptionLayout.allCases, id: \.self) { layout in
+                            Label(layout.title, systemImage: layout.symbol).tag(layout)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: model.captionLayout.symbol)
+                        .frame(width: 30, height: 30)
+                        .contentShape(.circle)
+                }
+                .menuStyle(.button)
+                .buttonStyle(ToolbarHoverStyle())
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(tr("Captions and answers"))
+
                 toolbarButton("lock", tr("Lock captions (click-through)") + "  ⌃⌥L") { model.lock(true) }
                 toolbarButton("gearshape", tr("Settings…")) { model.openSettings() }
                 toolbarButton("eye.slash", tr("Hide Captions") + "  ⌃⌥C") { model.setCaptions(false) }
@@ -465,6 +500,32 @@ struct ResizeHandles: View {
     }
 }
 
+
+/// The answers under the captions: drag the sides for width, the bottom for height.
+struct AnswerResizeHandles: View {
+    var body: some View {
+        ZStack {
+            Color.clear.frame(width: 7).frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(.rect)
+                .pointerStyle(.frameResize(position: .leading))
+                .gesture(DragGesture(minimumDistance: 1)
+                    .onChanged { _ in CaptionPanelController.current?.drag(.leading) }
+                    .onEnded { _ in CaptionPanelController.current?.endDrag() })
+            Color.clear.frame(width: 7).frame(maxWidth: .infinity, alignment: .trailing)
+                .contentShape(.rect)
+                .pointerStyle(.frameResize(position: .trailing))
+                .gesture(DragGesture(minimumDistance: 1)
+                    .onChanged { _ in CaptionPanelController.current?.drag(.trailing) }
+                    .onEnded { _ in CaptionPanelController.current?.endDrag() })
+            Color.clear.frame(height: 6).padding(.horizontal, 24).frame(maxHeight: .infinity, alignment: .bottom)
+                .contentShape(.rect)
+                .pointerStyle(.frameResize(position: .bottom))
+                .gesture(DragGesture(minimumDistance: 1)
+                    .onChanged { _ in CaptionPanelController.current?.dragAnswers() }
+                    .onEnded { _ in CaptionPanelController.current?.endDrag() })
+        }
+    }
+}
 
 /// Appears over a locked caption while the pointer is on it.
 struct UnlockPill: View {

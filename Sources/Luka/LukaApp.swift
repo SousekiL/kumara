@@ -181,6 +181,9 @@ struct LukaCommands: Commands {
             .keyboardShortcut("2")
             Button(tr("Shared Captions Window")) { openWindow(id: "presenter") }
                 .keyboardShortcut("3")
+            Picker(tr("Caption Window Shows"), selection: Binding(get: { model.captionLayout }, set: { model.captionLayout = $0 })) {
+                ForEach(CaptionLayout.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
             Divider()
             Button(tr("Bigger Text")) { model.adjustFontSize(1, captions: !isTranscriptKey, presenter: isPresenterKey) }
                 .keyboardShortcut("+")

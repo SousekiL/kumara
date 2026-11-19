@@ -94,7 +94,13 @@ final class CaptionPanelController: NSObject, NSWindowDelegate {
     private var metrics: CaptionMetrics { CaptionMetrics(fontSize: model.captionFontSize, family: model.fontFamily, originalSize: model.captionOriginalFontSize,
                                                            weight: model.captionWeight.ns, cjk: model.cjkFontFamily) }
 
-    private var targetHeight: CGFloat { Self.chrome + metrics.height(lines: model.captionLines) }
+    /// The toolbar space, the captions, and the answers under them, as the layout asks.
+    private var targetHeight: CGFloat {
+        let layout = model.captionLayout
+        return Self.chrome
+            + (layout.showsCaptions ? metrics.height(lines: model.captionLines) : 0)
+            + (layout.showsAnswers ? CGFloat(model.captionAnswersHeight) + (layout.showsCaptions ? Self.toolbarGap : 0) : 0)
+    }
 
     private var screen: NSScreen { panel.screen ?? NSScreen.main ?? NSScreen.screens[0] }
 
@@ -227,6 +233,20 @@ final class CaptionPanelController: NSObject, NSWindowDelegate {
         panel.setFrame(constrain(frame), display: true)
     }
 
+    /// Dragging the answers' bottom edge: taller or shorter, the top staying put.
+    func dragAnswers() {
+        let mouse = NSEvent.mouseLocation
+        if dragStart == nil { dragStart = (mouse, panel.frame, model.captionLines) }
+        guard let start = dragStart else { return }
+        let startAnswers = start.frame.height - (targetHeight - CGFloat(model.captionAnswersHeight))
+        let height = (Double(startAnswers) - Double(mouse.y - start.mouse.y)).clamped(to: AppModel.captionAnswersRange)
+        if abs(height - model.captionAnswersHeight) > 0.5 { model.captionAnswersHeight = height }
+        var frame = start.frame
+        frame.size.height = targetHeight
+        frame.origin.y = start.frame.maxY - frame.height
+        panel.setFrame(constrain(frame), display: true)
+    }
+
     func endDrag() {
         dragStart = nil
         save()
@@ -264,6 +284,8 @@ final class CaptionPanelController: NSObject, NSWindowDelegate {
     private func observe() {
         withObservationTracking {
             _ = model.captionLines
+            _ = model.captionLayout
+            _ = model.captionAnswersHeight
             _ = model.captionFontSize
             _ = model.captionPinned
             _ = model.locked

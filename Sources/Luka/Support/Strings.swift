@@ -598,5 +598,11 @@ enum Strings {
         "Show / hide the floating summary and answers": "显示 / 隐藏浮动的总结和回答面板",
         "Show summary and answers as tabs": "总结和回答分标签显示",
         "Show summary above answers": "总结在上、回答在下，同时显示",
+        "Captions only": "只显示字幕",
+        "Captions + answers": "字幕 + 回答",
+        "Answers only": "只显示回答",
+        "Captions and answers": "字幕和回答",
+        "Show": "显示",
+        "Caption Window Shows": "字幕窗口显示",
     ]
 }

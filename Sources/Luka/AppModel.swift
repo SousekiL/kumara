@@ -215,6 +215,11 @@ final class AppModel {
     }
 
     var captionLines: Int { didSet { store(captionLines, "captionLines") } }
+    /// What the caption window shows: captions, captions with the answers under them, or the answers alone.
+    var captionLayout: CaptionLayout { didSet { store(captionLayout.rawValue, "captionLayout") } }
+    /// Height of the answers under the captions, in points.
+    var captionAnswersHeight: Double { didSet { store(captionAnswersHeight, "captionAnswersHeight") } }
+    static let captionAnswersRange: ClosedRange<Double> = 120...700
     var captionFontSize: Double { didSet { store(captionFontSize, "captionFontSize") } }
     /// The original-language line under a translation, sized on its own.
     var captionOriginalFontSize: Double { didSet { store(captionOriginalFontSize, "captionOriginalFontSize") } }
@@ -378,6 +383,8 @@ final class AppModel {
         captionWeight = CaptionWeight(rawValue: d.string(forKey: "captionWeight") ?? "") ?? .regular
         showsDockButton = d.object(forKey: "showsDockButton") as? Bool ?? true
         panelStacked = d.bool(forKey: "panelStacked")
+        captionLayout = CaptionLayout(rawValue: d.string(forKey: "captionLayout") ?? "") ?? .captions
+        captionAnswersHeight = d.object(forKey: "captionAnswersHeight") as? Double ?? 240
         panelSplit = d.object(forKey: "panelSplit") as? Double ?? 0.38
         captionStyle = CaptionStyle(rawValue: d.string(forKey: "captionStyle") ?? "") ?? .glass
         captionBackgroundOpacity = d.object(forKey: "captionBackgroundOpacity") as? Double ?? 0.7
@@ -1179,4 +1186,28 @@ struct RenameRequest: Identifiable, Equatable {
 
 extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self { min(max(self, range.lowerBound), range.upperBound) }
+}
+
+/// What the caption window shows.
+enum CaptionLayout: String, CaseIterable {
+    case captions, both, answers
+
+    var showsCaptions: Bool { self != .answers }
+    var showsAnswers: Bool { self != .captions }
+
+    var title: String {
+        switch self {
+        case .captions: tr("Captions only")
+        case .both: tr("Captions + answers")
+        case .answers: tr("Answers only")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .captions: "captions.bubble"
+        case .both: "rectangle.split.1x2"
+        case .answers: "text.bubble"
+        }
+    }
 }

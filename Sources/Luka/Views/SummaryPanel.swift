@@ -5,6 +5,8 @@ import SwiftUI
 struct SummaryPanel: View {
     @Environment(AppModel.self) private var model
     let transcript: Transcript
+    /// Just the answers, for under the captions: no tabs, no summary, no ask box.
+    var answersOnly = false
     /// How many answers the user has had in view; the rest count as new on the tab.
     @State private var seenAnswers = 0
     @State private var notesPosition = ScrollPosition(edge: .top)
@@ -14,6 +16,15 @@ struct SummaryPanel: View {
     private var answerer: Answerer { model.answerer }
 
     var body: some View {
+        if answersOnly {
+            VStack(spacing: 0) { answersSection(titled: true) }
+                .frame(maxHeight: .infinity, alignment: .top)
+        } else {
+            column
+        }
+    }
+
+    @ViewBuilder private var column: some View {
         @Bindable var answerer = model.answerer
         let unseen = max(0, transcript.answers.count - seenAnswers)
         VStack(alignment: .leading, spacing: 0) {
