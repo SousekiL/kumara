@@ -553,6 +553,7 @@ struct AnswerRow: Identifiable {
     /// A question the reader typed, and what its answer rests on.
     let asked: Bool
     let source: String?
+    let restated: String?
     let createdAt: Date?
 
     init(_ item: QuestionAnswer) {
@@ -564,6 +565,7 @@ struct AnswerRow: Identifiable {
         polish = item.kind == "polish"
         asked = item.kind == "asked"
         source = item.source
+        restated = item.restated
         createdAt = item.createdAt
     }
 
@@ -576,6 +578,7 @@ struct AnswerRow: Identifiable {
         polish = live.polish
         asked = live.asked
         source = live.source
+        restated = live.restated
         createdAt = nil
     }
 
@@ -599,11 +602,11 @@ private struct AnswerCard: View {
                 // For a polish, the question line is what I said; show its start, not its last sentence.
                 Text(row.polish ? tr("You said") + ": " + row.question
                      : row.asked ? tr("You asked") + ": " + row.question
-                     : Questions.lastSentence(row.question) ?? row.question)
+                     : row.restated ?? Questions.lastSentence(row.question) ?? row.question)
                     .font(LukaFont.font(family, size: max(11, fontSize - 2), weight: row.asked ? .medium : .regular))
                     .foregroundStyle(row.asked ? .primary : .secondary)
                     .lineSpacing(fontSize * 0.15)
-                    .lineLimit(row.asked ? 4 : 2)
+                    .lineLimit(row.asked ? 4 : 3)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(row.question)
             }
@@ -831,9 +834,9 @@ private struct QuestionTracker: View {
                             status(entry.status)
                         }
                         .font(.caption)
-                        Text(Questions.lastSentence(entry.question.question) ?? entry.question.question)
+                        Text(entry.question.shownQuestion)
                             .font(LukaFont.font(family, size: max(11, fontSize - 1)))
-                            .lineLimit(2)
+                            .lineLimit(3)
                             .fixedSize(horizontal: false, vertical: true)
                             .help(entry.question.question)
                         if !entry.used.isEmpty {

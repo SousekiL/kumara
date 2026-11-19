@@ -496,18 +496,25 @@ struct PinnedQuestion: View {
     @Environment(AppModel.self) private var model
     let line: Line
 
+    private var restated: String? {
+        if let live = model.answerer.live, live.id == line.id, let r = live.restated { return r }
+        return model.transcript.answers.last { $0.id == line.id && $0.kind != "polish" }?.restated
+    }
+
     var body: some View {
         // Read in the caption's language unless the captions show the original too.
         let translated = line.translatedText
         let full = model.captionShowsOriginal || translated.isEmpty ? line.original : translated
-        // Just the question, without whatever was said before it in the same breath.
-        let text = Questions.lastSentence(full) ?? full
+        // The question restated with its premise once the answer model has written it;
+        // until then just the question, without whatever was said before it in the same breath.
+        let text = restated ?? Questions.lastSentence(full) ?? full
         HStack(spacing: 8) {
             Image(systemName: "questionmark.bubble.fill")
                 .foregroundStyle(model.speakerColor(line.speaker))
             Text(text)
-                .lineLimit(1)
+                .lineLimit(2)
                 .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
             Button {
                 withAnimation(.smooth) { model.dismissedQuestion = line.id }
             } label: {
@@ -520,8 +527,9 @@ struct PinnedQuestion: View {
         }
         .font(.callout.weight(.medium))
         .padding(.horizontal, 14)
-        .frame(height: 30)
-        .lukaGlass(.regular, in: .capsule)
+        .padding(.vertical, 6)
+        .frame(minHeight: 30)
+        .lukaGlass(.regular, in: .rect(cornerRadius: 15, style: .continuous))
         .padding(.horizontal, 24)
         .help(translated.isEmpty ? line.original : line.original + "\n" + translated)
     }

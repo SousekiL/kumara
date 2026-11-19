@@ -732,3 +732,16 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect((try JSONSerialization.jsonObject(with: plain.httpBody!) as? [String: Any])?["reasoning_effort"] == nil)
     }
 }
+
+@Suite struct RestatedQuestionTests {
+    @Test func questionLineIsAHeader() throws {
+        let a = try #require(AnswerPrompt.parse("SOURCE: knowledge\nTYPE: behavioral\nQUESTION: 你和同事对方案有分歧时，当时是怎么处理的？\n先对齐目标\n① Align on goal"))
+        #expect(a.question == "你和同事对方案有分歧时，当时是怎么处理的？" && a.kind == "behavioral" && a.text.hasPrefix("先对齐目标"))
+        #expect(AnswerPrompt.parse("SOURCE: model\nQUESTION: What is X?\nSKIP") == nil)
+        #expect(AnswerPrompt.partial("SOURCE: model\nQUESTION: 你和同事") == nil)
+        let p = try #require(AnswerPrompt.partial("SOURCE: model\nQUESTION: What is a p-value?\nThe chance"))
+        #expect(p.question == "What is a p-value?" && p.text == "The chance")
+        let q = QuestionAnswer(id: 1, question: "We disagreed a lot. How did you handle it?", answer: "a", fromKnowledge: false, createdAt: .now)
+        #expect(q.shownQuestion == "How did you handle it?")
+    }
+}

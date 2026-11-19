@@ -32,6 +32,8 @@ final class Answerer {
         var fromKnowledge = false
         var kind: String?
         var source: String?
+        /// The question restated to stand on its own, once the model has written it.
+        var restated: String?
     }
 
     private let defaults = UserDefaults.standard
@@ -166,7 +168,7 @@ final class Answerer {
         handled.formUnion(waiting.all)
         let line = waiting.line
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
-        let previous = t.answers.suffix(3).map { Questions.lastSentence($0.question) ?? $0.question }
+        let previous = t.answers.suffix(3).map(\.shownQuestion)
         let user = AnswerPrompt.user(question: line.original, asker: line.speaker.map(name) ?? "someone",
                                      conversation: conversation, knowledge: knowledge.excerpts(for: line.original),
                                      previous: previous)
@@ -211,6 +213,10 @@ final class Answerer {
                         self.live?.text = shown.text
                         self.live?.fromKnowledge = shown.fromKnowledge
                         self.live?.kind = shown.kind
+                        self.live?.restated = shown.question
+                    } else if let restated = AnswerPrompt.parse(text + "\nx")?.question {
+                        // The restated question arrives before the answer: show it in the pin at once.
+                        self.live?.restated = restated
                     }
                 }
                 guard !Task.isCancelled else { return }
@@ -225,7 +231,8 @@ final class Answerer {
                 } else {
                     guard let answer = AnswerPrompt.parse(reply) else { return }
                     item = QuestionAnswer(id: start.id, question: start.question, answer: answer.text,
-                                          fromKnowledge: answer.fromKnowledge, createdAt: .now, kind: answer.kind)
+                                          fromKnowledge: answer.fromKnowledge, createdAt: .now, kind: answer.kind,
+                                          restated: answer.question)
                 }
                 t.answers.append(item)
                 onAnswer()

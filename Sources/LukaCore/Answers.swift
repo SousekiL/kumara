@@ -20,9 +20,13 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
     public var better: String?
     /// For a question the reader typed: what the answer rests on ("transcript", "knowledge" or "model").
     public var source: String?
+    /// The question restated so it stands on its own, with the premise it refers to ("when you and a
+    /// colleague disagreed on the design, how did you handle it?" rather than "how did you handle it?").
+    public var restated: String?
 
     public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date, kind: String? = nil,
-                status: String? = nil, used: String? = nil, better: String? = nil, source: String? = nil) {
+                status: String? = nil, used: String? = nil, better: String? = nil, source: String? = nil,
+                restated: String? = nil) {
         self.id = id
         self.question = question
         self.answer = answer
@@ -33,6 +37,12 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
         self.used = used
         self.better = better
         self.source = source
+        self.restated = restated
+    }
+
+    /// The question as shown: restated when the model gave one, otherwise its last sentence.
+    public var shownQuestion: String {
+        restated ?? Questions.lastSentence(question) ?? question
     }
 }
 
@@ -169,8 +179,9 @@ public enum AnswerPrompt {
 
         Format
         Line 1 is exactly "SOURCE: knowledge" or "SOURCE: model" (see Sources).
+        Next (after the TYPE line, when there is one), a line "QUESTION: " followed by the question restated so it makes sense on its own, without the conversation: what is being asked, with the situation, premise or topic it refers to filled in from the conversation. Not "How did you handle it?" but "When you and a colleague disagreed on the design, how did you handle it?". At most 30 words of \(language.explain) (about 45 characters in Chinese).
         \(body)
-        No headings, no preamble, and don't repeat the question.
+        No headings, no preamble, and don't repeat the question after the QUESTION line.
         Reply with the final answer only. Never show your reasoning, second thoughts or corrections: decide first, then write once.
 
         Sources
@@ -227,13 +238,12 @@ public enum AnswerPrompt {
 
     /// What can be shown of a reply still coming in: nil while it is only header lines,
     /// or could still turn out to be SKIP.
-    public static func partial(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?)? {
+    public static func partial(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?, question: String?)? {
         var lines = reply.split(separator: "\n", omittingEmptySubsequences: false)
         // A header line still being written isn't text to show.
         if !reply.hasSuffix("\n"), let last = lines.last {
             let upper = last.trimmingCharacters(in: .whitespaces).uppercased()
-            if upper.isEmpty || "SOURCE:".hasPrefix(upper) || "TYPE:".hasPrefix(upper)
-                || upper.hasPrefix("SOURCE:") || upper.hasPrefix("TYPE:") {
+            if upper.isEmpty || ["SOURCE:", "TYPE:", "QUESTION:"].contains(where: { $0.hasPrefix(upper) || upper.hasPrefix($0) }) {
                 lines.removeLast()
             }
         }
@@ -248,9 +258,10 @@ public enum AnswerPrompt {
     }
 
     /// The answer, where it came from and its kind, or nil when the model declined to answer.
-    public static func parse(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?)? {
+    public static func parse(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?, question: String?)? {
         var fromKnowledge = false
         var kind: String?
+        var question: String?
         var body: [Substring] = []
         var lines = SummaryPrompt.clean(reply).split(separator: "\n", omittingEmptySubsequences: false)
         // A model that changed its mind halfway starts over with a new SOURCE line: keep only the last attempt.
@@ -268,6 +279,9 @@ public enum AnswerPrompt {
             } else if leading, upper.hasPrefix("TYPE:") {
                 let value = upper.dropFirst(5).trimmingCharacters(in: .whitespaces).lowercased()
                 kind = kinds.contains(value) ? value : nil
+            } else if leading, upper.hasPrefix("QUESTION:") {
+                let value = line.trimmingCharacters(in: .whitespaces).dropFirst(9).trimmingCharacters(in: .whitespaces)
+                question = value.isEmpty ? nil : value
             } else {
                 leading = false
                 body.append(line)
@@ -276,7 +290,7 @@ public enum AnswerPrompt {
         let text = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         let bare = text.trimmingCharacters(in: CharacterSet(charactersIn: " .。\n")).uppercased()
         if bare.isEmpty || bare == "SKIP" { return nil }
-        return (text, fromKnowledge, kind)
+        return (text, fromKnowledge, kind, question)
     }
 }
 
