@@ -372,7 +372,7 @@ struct CaptionToolbar: View {
                 // Captions, captions with the answers under them, or the answers alone.
                 Menu {
                     Picker(tr("Show"), selection: Bindable(model).captionLayout) {
-                        ForEach(CaptionLayout.allCases, id: \.self) { layout in
+                        ForEach(CaptionContent.allCases, id: \.self) { layout in
                             Label(layout.title, systemImage: layout.symbol).tag(layout)
                         }
                     }

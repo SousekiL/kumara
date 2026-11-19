@@ -216,7 +216,7 @@ final class AppModel {
 
     var captionLines: Int { didSet { store(captionLines, "captionLines") } }
     /// What the caption window shows: captions, captions with the answers under them, or the answers alone.
-    var captionLayout: CaptionLayout { didSet { store(captionLayout.rawValue, "captionLayout") } }
+    var captionLayout: CaptionContent { didSet { store(captionLayout.rawValue, "captionLayout") } }
     /// Height of the answers under the captions, in points.
     var captionAnswersHeight: Double { didSet { store(captionAnswersHeight, "captionAnswersHeight") } }
     static let captionAnswersRange: ClosedRange<Double> = 120...700
@@ -383,7 +383,7 @@ final class AppModel {
         captionWeight = CaptionWeight(rawValue: d.string(forKey: "captionWeight") ?? "") ?? .regular
         showsDockButton = d.object(forKey: "showsDockButton") as? Bool ?? true
         panelStacked = d.bool(forKey: "panelStacked")
-        captionLayout = CaptionLayout(rawValue: d.string(forKey: "captionLayout") ?? "") ?? .captions
+        captionLayout = CaptionContent(rawValue: d.string(forKey: "captionLayout") ?? "") ?? .captions
         captionAnswersHeight = d.object(forKey: "captionAnswersHeight") as? Double ?? 240
         panelSplit = d.object(forKey: "panelSplit") as? Double ?? 0.38
         captionStyle = CaptionStyle(rawValue: d.string(forKey: "captionStyle") ?? "") ?? .glass
@@ -1189,7 +1189,7 @@ extension Comparable {
 }
 
 /// What the caption window shows.
-enum CaptionLayout: String, CaseIterable {
+enum CaptionContent: String, CaseIterable {
     case captions, both, answers
 
     var showsCaptions: Bool { self != .answers }
