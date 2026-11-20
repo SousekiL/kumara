@@ -518,7 +518,12 @@ private struct SummarySettings: View {
                         Text(Languages.name($0, in: Localizer.shared.locale)).tag($0)
                     }
                 }
-                Toggle(tr("Floating button while listening"), isOn: $model.showsDockButton)
+                Toggle(isOn: $model.showsDockButton) {
+                    HStack {
+                        Text(tr("Floating button while listening"))
+                        KeyCaps(keys: GlobalShortcut.dockButton.keys, size: 10)
+                    }
+                }
             } header: {
                 Text(tr("Output"))
             } footer: {

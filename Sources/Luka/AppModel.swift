@@ -242,6 +242,12 @@ final class AppModel {
     /// Whether the edge button's panel is open.
     var dockOpen = false
 
+    /// The global shortcut for the floating button: off keeps listening without it on screen.
+    func toggleDockButton() {
+        showsDockButton.toggle()
+        show(showsDockButton ? tr("Floating button on") : tr("Floating button off"))
+    }
+
     /// The global shortcut for the floating card: only while its button is on screen.
     func toggleDock() {
         guard showsDockButton, status != .idle else { return }

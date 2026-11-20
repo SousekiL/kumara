@@ -604,5 +604,8 @@ enum Strings {
         "Captions and answers": "字幕和回答",
         "Show": "显示",
         "Caption Window Shows": "字幕窗口显示",
+        "Floating button on": "浮动按钮已显示",
+        "Floating button off": "浮动按钮已隐藏",
+        "Show / hide the floating button": "显示 / 隐藏浮动按钮",
     ]
 }

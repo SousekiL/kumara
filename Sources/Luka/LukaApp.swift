@@ -77,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .init(keyCode: kVK_ANSI_T, modifiers: chord) { [model] in model.toggleTranscriptWindow() },
             .init(keyCode: kVK_ANSI_L, modifiers: chord) { [model] in model.lock(!model.locked) },
             .init(keyCode: kVK_ANSI_A, modifiers: chord) { [model] in model.toggleDock() },
+            .init(keyCode: kVK_ANSI_F, modifiers: chord) { [model] in model.toggleDockButton() },
         ])
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--autostart") { model.start() }
