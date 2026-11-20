@@ -885,4 +885,78 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(s.visibleSpeakers.count == 2 && s.speakerSuggestions.count == 1)
         #expect(Transcript(snapshot: s.snapshot).speakerSuggestions.count == 1)
     }
+
+    @Test func acceptingLeavesLowConfidenceNamesakes() {
+        let t = session()
+        let ids = t.visibleSpeakers.map(\.id)
+        t.speakerSuggestions = [.init(id: ids[0], tag: "S1", person: "Irene", confidence: .high, why: ""),
+                                .init(id: ids[2], tag: "S3", person: "irene", confidence: .low, why: "")]
+        t.acceptSuggestion(for: ids[0])
+        // The low guess about someone else is still theirs to take.
+        #expect(t.visibleSpeakers.count == 3 && t.visibleSpeakers.map(\.name) == ["Irene", "", ""])
+        #expect(t.suggestion(for: ids[2])?.person == "irene" && t.speakerSuggestions.count == 1)
+        // Taking it themselves joins the Irene already there.
+        t.acceptSuggestion(for: ids[2])
+        #expect(t.visibleSpeakers.map(\.id) == [ids[0], ids[1]] && t.visibleSpeakers.map { $0.name.lowercased() } == ["irene", ""])
+        #expect(t.speakerSuggestions.isEmpty)
+    }
+
+    @Test func applyJoinsSomeoneAlreadyNamedOnTheSameSide() {
+        let t = session()
+        let ids = t.visibleSpeakers.map(\.id)
+        t.rename(ids[0], to: "Irene")
+        #expect(t.apply([.init(id: ids[2], tag: "S3", person: "IRENE", confidence: .high, why: "")]) > 0)
+        // Merged into the one who had the name, rather than named alongside them.
+        #expect(t.visibleSpeakers.map(\.id) == [ids[0], ids[1]] && t.visibleSpeakers.map { $0.name.lowercased() } == ["irene", ""])
+        // A placeholder names nobody, so it never joins someone by name.
+        t.resetSpeakers()
+        t.rename(ids[0], to: "?A")
+        t.apply([.init(id: ids[2], tag: "S3", person: "?A", confidence: .high, why: "")])
+        #expect(t.visibleSpeakers.count == 3)
+
+        // The other side of the call is someone else, whatever they are called.
+        let call = Transcript()
+        call.ingest(tokens([("I am Felix.", true, nil), ("<end>", true, nil)]), channel: .me)
+        call.ingest(tokens([("So am I.", true, nil), ("<end>", true, nil)]), channel: .them)
+        let both = call.visibleSpeakers.map(\.id)
+        call.rename(both[0], to: "Felix")
+        call.apply([.init(id: both[1], tag: "S2", person: "felix", confidence: .high, why: "")])
+        #expect(call.visibleSpeakers.count == 2 && call.visibleSpeakers.map(\.name) == ["Felix", "felix"])
+        // A placeholder shared only across the two sides is not worth showing; one shared on a side is, in any case.
+        call.resetSpeakers()
+        call.speakerSuggestions = both.map { .init(id: $0, tag: "S", person: "?A", confidence: .medium, why: "") }
+        #expect(both.allSatisfy { call.suggestion(for: $0) == nil })
+        let s = session()
+        let three = s.visibleSpeakers.map(\.id)
+        s.speakerSuggestions = [.init(id: three[0], tag: "S1", person: "?A", confidence: .medium, why: ""),
+                                .init(id: three[2], tag: "S3", person: "?a", confidence: .medium, why: "")]
+        #expect(s.suggestion(for: three[0]) != nil && s.suggestion(for: three[2]) != nil)
+    }
+
+    @Test func undoOffersTakenSuggestionsAgain() {
+        let t = session()
+        let ids = t.visibleSpeakers.map(\.id)
+        let offered: [SpeakerProposal] = [.init(id: ids[0], tag: "S1", person: "Irene", confidence: .high, why: ""),
+                                          .init(id: ids[1], tag: "S2", person: "Roy", confidence: .medium, why: ""),
+                                          .init(id: ids[2], tag: "S3", person: "Irene", confidence: .medium, why: "")]
+        t.speakerSuggestions = offered
+        t.acceptSuggestion(for: ids[0])
+        #expect(t.speakerSuggestions.map(\.id) == [ids[1]])
+        #expect(t.snapshot.speakerSuggestionsTaken?.count == 2)
+        // Saved and reopened, undoing still puts them back on offer.
+        let again = Transcript(snapshot: t.snapshot)
+        again.undoSpeakerNames()
+        #expect(Set(again.speakerSuggestions.map(\.id)) == Set(ids) && again.speakerSuggestions.count == 3)
+        #expect(ids.allSatisfy { again.suggestion(for: $0) != nil })
+        #expect(again.snapshot.speakerSuggestionsTaken == nil)
+        // A second undo has nothing to bring back.
+        again.undoSpeakerNames()
+        #expect(again.speakerSuggestions.count == 3)
+
+        // Resetting forgets what was taken.
+        t.resetSpeakers()
+        #expect(t.snapshot.speakerSuggestionsTaken == nil)
+        t.undoSpeakerNames()
+        #expect(t.speakerSuggestions.map(\.id) == [ids[1]])
+    }
 }
