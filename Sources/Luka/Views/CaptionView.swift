@@ -504,26 +504,29 @@ struct ResizeHandles: View {
 /// The answers under the captions: drag the sides for width, the bottom for height.
 struct AnswerResizeHandles: View {
     var body: some View {
+        // Each grab area is only its thin edge: the shape is set before the frame that places it,
+        // so the answers inside stay clickable.
         ZStack {
-            Color.clear.frame(width: 7).frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(.rect)
-                .pointerStyle(.frameResize(position: .leading))
-                .gesture(DragGesture(minimumDistance: 1)
-                    .onChanged { _ in CaptionPanelController.current?.drag(.leading) }
-                    .onEnded { _ in CaptionPanelController.current?.endDrag() })
-            Color.clear.frame(width: 7).frame(maxWidth: .infinity, alignment: .trailing)
-                .contentShape(.rect)
-                .pointerStyle(.frameResize(position: .trailing))
-                .gesture(DragGesture(minimumDistance: 1)
-                    .onChanged { _ in CaptionPanelController.current?.drag(.trailing) }
-                    .onEnded { _ in CaptionPanelController.current?.endDrag() })
-            Color.clear.frame(height: 6).padding(.horizontal, 24).frame(maxHeight: .infinity, alignment: .bottom)
-                .contentShape(.rect)
-                .pointerStyle(.frameResize(position: .bottom))
-                .gesture(DragGesture(minimumDistance: 1)
-                    .onChanged { _ in CaptionPanelController.current?.dragAnswers() }
-                    .onEnded { _ in CaptionPanelController.current?.endDrag() })
+            handle(.leading).frame(width: 7).frame(maxWidth: .infinity, alignment: .leading)
+            handle(.trailing).frame(width: 7).frame(maxWidth: .infinity, alignment: .trailing)
+            handle(.bottom).frame(height: 6).padding(.horizontal, 24).frame(maxHeight: .infinity, alignment: .bottom)
         }
+    }
+
+    private func handle(_ edge: Edge) -> some View {
+        let position: FrameResizePosition = switch edge {
+        case .leading: .leading
+        case .trailing: .trailing
+        default: .bottom
+        }
+        return Color.clear
+            .contentShape(.rect)
+            .pointerStyle(.frameResize(position: position))
+            .gesture(DragGesture(minimumDistance: 1)
+                .onChanged { _ in
+                    if edge == .bottom { CaptionPanelController.current?.dragAnswers() } else { CaptionPanelController.current?.drag(edge) }
+                }
+                .onEnded { _ in CaptionPanelController.current?.endDrag() })
     }
 }
 
