@@ -19,6 +19,9 @@ final class SpeakerIdentifier {
     /// The session being read.
     private(set) var workingOn: UUID?
     private(set) var error: String?
+    /// The session the error is about.
+    private var errorSession: UUID?
+    func error(for session: UUID) -> String? { errorSession == session ? error : nil }
     private(set) var result: Result?
     @ObservationIgnored private var task: Task<Void, Never>?
 
@@ -28,7 +31,10 @@ final class SpeakerIdentifier {
 
     /// On opening the speakers list: one pass per session, again only once it has grown by half.
     func suggestIfNeeded(_ t: Transcript, listening: Bool, service: AssistantService) {
-        guard suggestsAutomatically, !listening, t.lines.count >= 30, t.speakerSuggestions.isEmpty else { return }
+        guard suggestsAutomatically, !listening, t.lines.count >= 30,
+              // Nothing still on offer, and someone left to name.
+              !t.speakerSuggestions.contains(where: { t.suggestion(for: $0.id) != nil }),
+              t.visibleSpeakers.contains(where: { $0.name.isEmpty }) else { return }
         if let seen = t.speakerSuggestedLines, t.lines.count < seen + max(30, seen / 2) { return }
         let notes = t.speakerNotes
         identify(t, hints: SpeakerHints(count: notes.count, names: SpeakerHints.parseNames(notes.names), notes: notes.notes,
@@ -43,6 +49,7 @@ final class SpeakerIdentifier {
         working = true
         workingOn = session
         error = nil
+        errorSession = session
         result = nil
         task = Task {
             defer {
@@ -54,6 +61,8 @@ final class SpeakerIdentifier {
                 guard !Task.isCancelled else { return }
                 guard let parsed = SpeakerPrompt.parse(reply, tags: sheet.tags) else {
                     error = tr("The model’s reply couldn’t be read. Try again.")
+                    // A failed pass counts, so opening the list doesn't ask again at once.
+                    t.speakerSuggestedLines = t.lines.count
                     return
                 }
                 result = Result(session: session, proposals: parsed.proposals, note: parsed.note)
@@ -64,6 +73,7 @@ final class SpeakerIdentifier {
             } catch let e where Task.isCancelled || e is CancellationError || (e as? URLError)?.code == .cancelled {
             } catch let e {
                 error = e.localizedDescription
+                t.speakerSuggestedLines = t.lines.count
                 AudioLog.write("speaker identification failed: \(e.localizedDescription)")
             }
         }
