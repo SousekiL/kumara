@@ -62,7 +62,7 @@ struct SpeakerIdentifySheet: View {
             .formStyle(.grouped)
             .scrollContentBackground(.hidden)
 
-            if let error = identifier.error {
+            if let error = identifier.error(for: transcript.id) {
                 Text(error).font(.callout).foregroundStyle(.red).lineLimit(3)
                     .padding(.horizontal, 20).padding(.bottom, 6)
             }
@@ -81,6 +81,8 @@ struct SpeakerIdentifySheet: View {
                 if identifier.workingOn == transcript.id {
                     ProgressView().controlSize(.small)
                     Text(tr("Reading the session…")).foregroundStyle(.secondary)
+                } else if identifier.working {
+                    Text(tr("Reading another session…")).foregroundStyle(.secondary)
                 }
                 Button(tr("Close")) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(result == nil ? tr("Identify") : tr("Try Again")) { run() }
@@ -102,8 +104,8 @@ struct SpeakerIdentifySheet: View {
             count = transcript.speakerNotes.count
             names = transcript.speakerNotes.names
             notes = transcript.speakerNotes.notes
-            if result == nil, !transcript.speakerSuggestions.isEmpty {
-                accepted = Set(transcript.speakerSuggestions.filter { $0.confidence > .low }.map(\.id))
+            if let result {
+                accepted = Set(result.proposals.filter { $0.confidence > .low }.map(\.id))
             }
         }
         .onDisappear {

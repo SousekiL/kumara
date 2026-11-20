@@ -649,6 +649,7 @@ enum Strings {
         "Reset Every Speaker": "全部重置为原始转写",
         "Reset Every Speaker: no names, nothing merged, as first transcribed": "全部重置：清空所有名字和合并，回到最初转写的状态",
         "Reading the session…": "正在通读会话…",
+        "Reading another session…": "正在通读另一场会话…",
         "Identify": "开始推断",
         "Apply": "应用",
         "%d speaker change(s) applied": "已应用 %d 处说话人改动",

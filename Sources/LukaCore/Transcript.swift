@@ -139,6 +139,8 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var speakerNotes: SpeakerNotes? = nil
     /// How many lines the session had when names were last proposed.
     public var speakerSuggestedLines: Int? = nil
+    /// Proposals taken up since the backup, to offer again when it is restored.
+    public var speakerSuggestionsTaken: [SpeakerProposal]? = nil
 }
 
 @MainActor
@@ -181,6 +183,8 @@ public final class Transcript: Identifiable {
     public var speakerSuggestions: [SpeakerProposal] = [] { didSet { if speakerSuggestions != oldValue { touch() } } }
     public var speakerNotes = SpeakerNotes() { didSet { if speakerNotes != oldValue { touch() } } }
     public var speakerSuggestedLines: Int? { didSet { if speakerSuggestedLines != oldValue { touch() } } }
+    /// Proposals taken up since the backup; undoing puts them back on offer.
+    private var speakerSuggestionsTaken: [SpeakerProposal] = []
 
     /// The proposal still open for a speaker: not yet their name.
     public func suggestion(for id: SpeakerID) -> SpeakerProposal? {
@@ -188,7 +192,12 @@ public final class Transcript: Identifiable {
               let p = speakerSuggestions.first(where: { $0.id == id }) else { return nil }
         if p.isPlaceholder {
             // Only worth showing when someone else shares it.
-            let others = speakerSuggestions.filter { $0.person == p.person && $0.id != id && speakers[$0.id]?.mergedInto == nil }
+            // Same side of the call only: the mic and the far side never merge.
+            let mic = Channel(id) == .me
+            let others = speakerSuggestions.filter {
+                $0.person.lowercased() == p.person.lowercased() && $0.id != id
+                    && speakers[$0.id]?.mergedInto == nil && (Channel($0.id) == .me) == mic
+            }
             return others.isEmpty ? nil : p
         }
         return s.name == p.person ? nil : p
@@ -198,7 +207,8 @@ public final class Transcript: Identifiable {
     @discardableResult
     public func acceptSuggestion(for id: SpeakerID) -> Int {
         guard let p = suggestion(for: id) else { return 0 }
-        return apply(speakerSuggestions.filter { $0.person.lowercased() == p.person.lowercased() })
+        // Guesses about other speakers are left for the reader to take themselves.
+        return apply(speakerSuggestions.filter { $0.person.lowercased() == p.person.lowercased() && ($0.id == id || $0.confidence > .low) })
     }
 
     public func dismissSuggestion(for id: SpeakerID) {
@@ -264,6 +274,7 @@ public final class Transcript: Identifiable {
         mode = s.mode.flatMap(AssistantMode.init(rawValue:))
         speakerBackup = s.speakerBackup
         speakerSuggestions = s.speakerSuggestions ?? []
+        speakerSuggestionsTaken = s.speakerSuggestionsTaken ?? []
         speakerNotes = s.speakerNotes ?? SpeakerNotes()
         speakerSuggestedLines = s.speakerSuggestedLines
         // Continue numbering Them streams past the saved ones, so new people aren't taken for earlier ones.
@@ -277,7 +288,8 @@ public final class Transcript: Identifiable {
                            summary: summary, answers: answers.isEmpty ? nil : answers,
                            tags: tags.isEmpty ? nil : tags, mode: mode?.rawValue, speakerBackup: speakerBackup,
                            speakerSuggestions: speakerSuggestions.isEmpty ? nil : speakerSuggestions,
-                           speakerNotes: speakerNotes.isEmpty ? nil : speakerNotes, speakerSuggestedLines: speakerSuggestedLines)
+                           speakerNotes: speakerNotes.isEmpty ? nil : speakerNotes, speakerSuggestedLines: speakerSuggestedLines,
+                           speakerSuggestionsTaken: speakerSuggestionsTaken.isEmpty ? nil : speakerSuggestionsTaken)
     }
 
     /// Stamps the session with the time listening first starts.
@@ -654,7 +666,14 @@ public final class Transcript: Identifiable {
         for key in order {
             guard let group = groups[key], let person = group.first?.person else { continue }
             // Whoever spoke most keeps their color and place.
-            guard let target = group.max(by: { (counts[$0.id] ?? 0) < (counts[$1.id] ?? 0) })?.id else { continue }
+            // Someone already carrying the name, on the same side, is that person.
+            let ids = Set(group.map(\.id))
+            let mic = key.hasSuffix("|mic")
+            let named = (group.first?.isPlaceholder ?? true) ? nil : speakerOrder.first { id in
+                guard let s = speakers[id], s.mergedInto == nil, !ids.contains(id) else { return false }
+                return s.name.lowercased() == person.lowercased() && (Channel(id) == .me) == mic
+            }
+            guard let target = named ?? group.max(by: { (counts[$0.id] ?? 0) < (counts[$1.id] ?? 0) })?.id else { continue }
             for p in group where p.id != target {
                 speakers[p.id]?.mergedInto = target
                 changed += 1
@@ -666,8 +685,10 @@ public final class Transcript: Identifiable {
         }
         // Taken up or not needed any more either way.
         let used = Set(proposals.map(\.id))
+        let taken = speakerSuggestions.filter { used.contains($0.id) }
         speakerSuggestions.removeAll { used.contains($0.id) }
         guard changed > 0 else { return 0 }
+        speakerSuggestionsTaken += taken
         // The first backup is the one to go back to, however many passes follow.
         if speakerBackup == nil { speakerBackup = before }
         touch()
@@ -680,6 +701,10 @@ public final class Transcript: Identifiable {
         for old in backup where speakers[old.id] != nil { speakers[old.id] = old }
         // Anyone merged since into a speaker that is itself merged again still resolves through `canonical`.
         speakerBackup = nil
+        // What was taken up is on offer again.
+        let open = Set(speakerSuggestions.map(\.id))
+        speakerSuggestions = speakerSuggestionsTaken.filter { !open.contains($0.id) } + speakerSuggestions
+        speakerSuggestionsTaken = []
         touch()
     }
 
@@ -690,6 +715,7 @@ public final class Transcript: Identifiable {
             speakers[id]?.mergedInto = nil
         }
         speakerBackup = nil
+        speakerSuggestionsTaken = []
         touch()
     }
 
