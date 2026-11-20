@@ -678,7 +678,8 @@ public final class Transcript: Identifiable {
                 speakers[p.id]?.mergedInto = target
                 changed += 1
             }
-            if !(group.first?.isPlaceholder ?? true), speakers[target]?.name != person {
+            // Whoever already had the name keeps it as they wrote it.
+            if named == nil, !(group.first?.isPlaceholder ?? true), speakers[target]?.name != person {
                 speakers[target]?.name = person
                 changed += 1
             }

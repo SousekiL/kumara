@@ -897,7 +897,7 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(t.suggestion(for: ids[2])?.person == "irene" && t.speakerSuggestions.count == 1)
         // Taking it themselves joins the Irene already there.
         t.acceptSuggestion(for: ids[2])
-        #expect(t.visibleSpeakers.map(\.id) == [ids[0], ids[1]] && t.visibleSpeakers.map { $0.name.lowercased() } == ["irene", ""])
+        #expect(t.visibleSpeakers.map(\.id) == [ids[0], ids[1]] && t.visibleSpeakers.map(\.name) == ["Irene", ""])
         #expect(t.speakerSuggestions.isEmpty)
     }
 
@@ -905,9 +905,9 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let t = session()
         let ids = t.visibleSpeakers.map(\.id)
         t.rename(ids[0], to: "Irene")
-        #expect(t.apply([.init(id: ids[2], tag: "S3", person: "IRENE", confidence: .high, why: "")]) > 0)
-        // Merged into the one who had the name, rather than named alongside them.
-        #expect(t.visibleSpeakers.map(\.id) == [ids[0], ids[1]] && t.visibleSpeakers.map { $0.name.lowercased() } == ["irene", ""])
+        #expect(t.apply([.init(id: ids[2], tag: "S3", person: "IRENE", confidence: .high, why: "")]) == 1)
+        // Merged into the one who had the name, who keeps it as written.
+        #expect(t.visibleSpeakers.map(\.id) == [ids[0], ids[1]] && t.visibleSpeakers.map(\.name) == ["Irene", ""])
         // A placeholder names nobody, so it never joins someone by name.
         t.resetSpeakers()
         t.rename(ids[0], to: "?A")
