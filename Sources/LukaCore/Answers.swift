@@ -156,7 +156,8 @@ public enum AnswerPrompt {
         system(language: OutputLanguage(language), mode: mode, role: role, extra: extra)
     }
 
-    public static func system(language: OutputLanguage, mode: AssistantMode = .meeting, role: String = "", extra: String = "") -> String {
+    public static func system(language: OutputLanguage, mode: AssistantMode = .meeting, role: String = "", extra: String = "",
+                              lessons: [String] = []) -> String {
         let body: String
         if mode == .interview {
             body = interviewBody(language)
@@ -196,6 +197,9 @@ public enum AnswerPrompt {
         """
         let guidance = mode.answerGuidance(role: role)
         if !guidance.isEmpty { prompt += "\n\n" + guidance + "\nWhatever the type, keep to the format and length above: the reader has seconds." }
+        if !lessons.isEmpty {
+            prompt += "\n\nLessons from the reader's earlier sessions (keep the format above):\n" + lessons.map { "- " + $0 }.joined(separator: "\n")
+        }
         let extra = extra.trimmingCharacters(in: .whitespacesAndNewlines)
         if !extra.isEmpty {
             prompt += "\n\nThe reader's own instructions, which override the above where they conflict:\n\(extra)"
@@ -309,14 +313,15 @@ extension Transcript {
     /// The newest finished question that hasn't been handled, asked within `maxAge`, plus every
     /// other waiting question's line, so older ones aren't answered late. Never the user's own questions.
     public func waitingQuestion(handled: Set<Int>, channelsOnly: Bool, eagerness: AnswerEagerness = .normal,
-                                now: Date = .now, maxAge: TimeInterval = 90)
+                                tuning: AnswerTuning? = nil, now: Date = .now, maxAge: TimeInterval = 90)
         -> (line: Line, all: [Int])?
     {
         let waiting = lines.suffix(30).filter { line in
             guard !line.isOpen, !handled.contains(line.id), now.timeIntervalSince(line.startedAt) <= maxAge else { return false }
             let channel = Channel(line.speaker)
             if channelsOnly ? channel != .them : channel == .me { return false }
-            return eagerness.accepts(line.original, fromThem: channel == .them)
+            return tuning?.accepts(line.original, fromThem: channel == .them, eagerness: eagerness)
+                ?? eagerness.accepts(line.original, fromThem: channel == .them)
         }
         guard let newest = waiting.last else { return nil }
         return (newest, waiting.map(\.id))

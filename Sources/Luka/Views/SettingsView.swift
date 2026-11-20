@@ -503,6 +503,8 @@ private struct SummarySettings: View {
                 Text(tr("Read by both the summary and the answers. The role tells Interview mode which questions are interview questions."))
             }
 
+            TuningSection(tuner: model.answerer.tuner)
+
             Section {
                 Picker(tr("Summary detail"), selection: $summarizer.detail) {
                     Text(tr("Concise")).tag(SummaryDetail.concise)
@@ -547,6 +549,72 @@ private struct SummarySettings: View {
 }
 
 /// Files, folders and notes the answers draw on first.
+/// What the answers learned from past sessions, with a way to undo any of it.
+private struct TuningSection: View {
+    @Bindable var tuner: AnswerTuner
+
+    var body: some View {
+        Section {
+            Toggle(tr("Learn from each session"), isOn: $tuner.enabled)
+            ForEach(AnswerTuner.modes, id: \.self) { mode in
+                let t = tuner.tuning(for: mode)
+                DisclosureGroup {
+                    if t.rules.isEmpty {
+                        Text(tr("No rules yet")).foregroundStyle(.secondary)
+                    }
+                    ForEach(t.rules) { rule in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(rule.text).help(rule.why)
+                            if rule.trial {
+                                Text(tr("trial")).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button { tuner.removeRule(rule.id, mode: mode) } label: { Image(systemName: "xmark.circle") }
+                                .buttonStyle(.borderless)
+                                .help(tr("Remove this rule"))
+                        }
+                    }
+                    if !t.cues.isEmpty {
+                        Text(tr("Also answers turns with") + ": " + t.cues.map { "“\($0)”" }.joined(separator: " · "))
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Spacer()
+                        Button(tr("Reset to the defaults")) { tuner.reset(mode) }
+                            .disabled(t == AnswerTuning())
+                    }
+                } label: {
+                    LabeledContent(mode.title) {
+                        Text(String(format: tr("%d rules · %d cues"), t.rules.count, t.cues.count)
+                             + (mode == .interview ? " · " + String(format: tr("answers turns from %d"), t.eagerWeight) : "")
+                             + (t.floor > 0 ? " · " + String(format: tr("ignores under %d"), t.floor) : ""))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if !tuner.history.isEmpty {
+                Menu(tr("Undo a change")) {
+                    ForEach(tuner.history.prefix(15)) { v in
+                        Button(v.mode.title + " · " + v.date.formatted(date: .abbreviated, time: .shortened) + " · " + (v.changes.first ?? "")) {
+                            tuner.undo(v)
+                        }
+                    }
+                }
+                .fixedSize()
+            }
+            if tuner.reviewing {
+                HStack { ProgressView().controlSize(.small); Text(tr("Reviewing the last session…")) }
+            } else if let report = tuner.lastReport {
+                Text(report).font(.callout).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text(tr("Learning from sessions"))
+        } footer: {
+            Text(tr("When an interview or meeting with answers on ends, the answer model reviews it once (about the cost of one long answer) and adjusts how answers are triggered and what they put first, a little at a time: at most two rules and three phrases per session, and a threshold moves one step only when two sessions in a row agree and replaying the session shows nothing that needed an answer would be missed. Every change can be undone."))
+        }
+    }
+}
+
 private struct KnowledgeSettings: View {
     @Environment(AppModel.self) private var model
 

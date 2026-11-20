@@ -625,6 +625,10 @@ final class AppModel {
         store.save(transcript)
         flushUsage()
         summarizer.catchUp(transcript, mode: assistantMode, language: assistantLanguage, name: summaryName(in: transcript))
+        // Learn from the session how to answer next time, in small steps.
+        if answerer.enabled {
+            answerer.tuner.review(transcript, mode: assistantMode, service: assistant) { [weak self] note in self?.show(note) }
+        }
         // Soniox's own numbers lag a little; look again once this session has been billed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.refreshAccount() }
     }

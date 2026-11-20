@@ -747,3 +747,49 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.user(question: "q", asker: "a", conversation: "", knowledge: "", force: true).contains("never SKIP"))
     }
 }
+
+@Suite struct TuningTests {
+    let turns: [(id: Int, text: String)] = [
+        (1, "可能有一个join的地方，可能需要处理。"),
+        (2, "会不会？"),
+        (3, "OK，了解。"),
+        (4, "那你觉得这一段code要改哪里？"),
+    ]
+
+    @Test func cuesAndFloorChangeWhatIsSent() {
+        var t = AnswerTuning()
+        #expect(t.triggered(turns, eagerness: .eager) == [2, 4])
+        t.cues = ["需要处理"]
+        t.floor = 10
+        #expect(t.triggered(turns, eagerness: .eager) == [1, 4])
+    }
+
+    @Test func learnIsSmallAndNeedsTwoSessionsForThresholds() {
+        var t = AnswerTuning()
+        t.floor = 8
+        let review = TuningReview(needed: [1, 4], rules: [
+            .init(op: "add", id: nil, text: "During a coding task, treat hints as questions.", why: "missed hint", evidence: [1]),
+            .init(op: "add", id: nil, text: "No evidence, not added.", why: "", evidence: []),
+            .init(op: "add", id: nil, text: "Third op is ignored.", why: "", evidence: [1]),
+        ], cues: ["需要处理", "OK"])
+        let changes = t.learn(from: review, turns: turns, eagerness: .eager)
+        #expect(t.rules.count == 1 && t.rules[0].trial)
+        #expect(t.cues == ["需要处理"])
+        // The floor would cut the fragment: noted, not applied yet.
+        #expect(t.floor == 8 && t.pendingNudge == .init(setting: .floor, delta: 4))
+        #expect(changes.count == 2)
+        // A second session agreeing moves it one step; the trial rule is kept.
+        _ = t.learn(from: TuningReview(needed: [1, 4]), turns: turns, eagerness: .eager)
+        #expect(t.floor == 12 && t.pendingNudge == nil && !t.rules[0].trial)
+    }
+
+    @Test func dropTrialRuleAndParse() throws {
+        var t = AnswerTuning()
+        t.rules = [.init(id: 7, text: "x", why: "", trial: true, added: .now)]
+        _ = t.learn(from: TuningReview(drop: [7]), turns: turns, eagerness: .eager)
+        #expect(t.rules.isEmpty)
+        let r = try #require(TuningPrompt.parse("```json\n{\"needed\": [1, \"4\"], \"rules\": [{\"op\": \"remove\", \"id\": 3, \"why\": \"y\"}], \"cues\": [\"看一下\"]}\n```"))
+        #expect(r.needed == [1, 4] && r.rules.first?.op == "remove" && r.rules.first?.id == 3 && r.cues == ["看一下"])
+        #expect(AnswerPrompt.system(language: OutputLanguage("Chinese"), mode: .interview, lessons: ["Do X."]).contains("- Do X."))
+    }
+}

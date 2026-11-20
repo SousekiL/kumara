@@ -82,6 +82,8 @@ final class Answerer {
     private(set) var lastError: String?
     /// The answer or polish being written right now.
     private(set) var live: Live?
+    /// Learns from each finished session when and how to answer.
+    let tuner = AnswerTuner()
     /// The question most recently skipped, until the next one is taken up.
     private(set) var skipped: Skipped?
     /// The answer to a question the reader typed, being written; separate, so neither waits for the other.
@@ -171,8 +173,15 @@ final class Answerer {
             sessionID = t.id
             handled = Set(t.lines.map(\.id))
         }
-        guard !working else { return }
-        guard let waiting = t.waitingQuestion(handled: handled, channelsOnly: channelsOnly, eagerness: mode.eagerness) else {
+        let tuning = tuner.tuning(for: mode)
+        if working {
+            // A question beats feedback on my own answer: drop the feedback and answer.
+            guard live?.polish == true,
+                  t.waitingQuestion(handled: handled, channelsOnly: channelsOnly, eagerness: mode.eagerness, tuning: tuning) != nil
+            else { return }
+            stop()
+        }
+        guard let waiting = t.waitingQuestion(handled: handled, channelsOnly: channelsOnly, eagerness: mode.eagerness, tuning: tuning) else {
             // Questions come first; with none waiting, look at the answer I just gave.
             if polishes, mode == .interview, channelsOnly { polish(t, language: language) }
             return
@@ -189,7 +198,9 @@ final class Answerer {
         let user = AnswerPrompt.user(question: question, asker: asker.map(name) ?? "someone",
                                      conversation: conversation, knowledge: knowledge.excerpts(for: question),
                                      previous: previous, force: force)
-        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context),
+        let lessons = tuner.tuning(for: mode).lessons
+        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context,
+                                                                        lessons: lessons),
                                             user: user, maxTokens: 4_000, stream: true) else { return }
         skipped = nil
         write(request, into: t, live: Live(session: t.id, id: id, question: question, polish: false, committed: force),
