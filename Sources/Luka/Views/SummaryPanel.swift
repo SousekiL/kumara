@@ -102,6 +102,8 @@ struct SummaryPanel: View {
                 .toggleStyle(.switch).controlSize(.mini).labelsHidden()
                 .help(tr("Answer questions as they’re asked"))
         }
+        // Under the captions, the header is where the caption window is dragged from.
+        .windowDraggable(answersOnly)
         Divider()
         ScrollView {
             VStack(alignment: .leading, spacing: 0) { answers }
@@ -1026,6 +1028,17 @@ private struct AskBar: View {
         guard canSend else { return }
         model.ask(draft, in: transcript)
         draft = ""
+    }
+}
+
+extension View {
+    /// Drags the window from this view's empty space, when on.
+    @ViewBuilder func windowDraggable(_ on: Bool) -> some View {
+        if on {
+            self.contentShape(.rect).gesture(WindowDragGesture())
+        } else {
+            self
+        }
     }
 }
 
