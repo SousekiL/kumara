@@ -73,6 +73,12 @@ final class SessionStore {
         }
     }
 
+    /// Writes every open session that changed: a typed question or a refreshed summary can land
+    /// in a session that isn't the live one.
+    func saveDirty() {
+        for t in Array(cache.values) where savedRevision[t.id] != t.revision { save(t) }
+    }
+
     func delete(_ id: UUID) {
         deleted.insert(id)
         try? FileManager.default.removeItem(at: url(id))

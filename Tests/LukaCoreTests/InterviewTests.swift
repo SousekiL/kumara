@@ -793,3 +793,42 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.system(language: OutputLanguage("Chinese"), mode: .interview, lessons: ["Do X."]).contains("- Do X."))
     }
 }
+
+@MainActor @Suite struct ReviewFixTests {
+    @Test func summaryWaitsForAnOpenEarlierLine() {
+        let t = Transcript()
+        // Them is mid-turn while Me finishes a sentence.
+        t.ingest(tokens([("So the plan for the launch is", true, nil)]), channel: .them)
+        t.ingest(tokens([("Sounds good to me.", true, nil), ("<end>", true, nil)]), channel: .me)
+        let first = t.summaryText(after: nil, closedOnly: true, limit: 10_000) { _ in "S" }
+        #expect(first.text.isEmpty && first.lastLineID == nil)
+        t.ingest(tokens([(" next Tuesday.", true, nil), ("<end>", true, nil)]), channel: .them)
+        let second = t.summaryText(after: first.lastLineID, closedOnly: true, limit: 10_000) { _ in "S" }
+        #expect(second.text.contains("next Tuesday") && second.text.contains("Sounds good"))
+    }
+
+    @Test func skipWithTrailingTextAndBodySourceLines() throws {
+        #expect(AnswerPrompt.parse("SKIP - small talk") == nil)
+        #expect(AnswerPrompt.parse("Skip: greeting") == nil)
+        #expect(AnswerPrompt.parse("SOURCE: model\nSkip the intro and state the result first") != nil)
+        let ask = try #require(AskPrompt.parse("SOURCE: transcript\nThey said X\nSource: the meeting"))
+        #expect(ask.source == "transcript" && ask.text.contains("They said X"))
+        let again = try #require(AskPrompt.parse("SOURCE: model\nfirst try\n\nSOURCE: knowledge\nsecond"))
+        #expect(again.source == "knowledge" && again.text == "second")
+    }
+
+    @Test func tuningNeedsNeededAndTwoDifferentSessions() {
+        #expect(TuningPrompt.parse("{\"rules\": []}") == nil)
+        let turns: [(id: Int, text: String)] = [(1, "可能有一个join的地方，可能需要处理。"), (2, "会不会？"), (4, "那你觉得这一段code要改哪里？")]
+        var t = AnswerTuning()
+        t.floor = 8
+        let a = UUID()
+        _ = t.learn(from: TuningReview(needed: []), turns: turns, eagerness: .eager, session: a)
+        #expect(t.pendingNudge == nil && t.floor == 8)
+        _ = t.learn(from: TuningReview(needed: [1, 4]), turns: turns, eagerness: .eager, session: a)
+        _ = t.learn(from: TuningReview(needed: [1, 4]), turns: turns, eagerness: .eager, session: a)
+        #expect(t.floor == 8)
+        _ = t.learn(from: TuningReview(needed: [1, 4]), turns: turns, eagerness: .eager, session: UUID())
+        #expect(t.floor == 12)
+    }
+}

@@ -18,6 +18,14 @@ public struct AnswerTuning: Codable, Sendable, Equatable {
     public struct Nudge: Codable, Sendable, Equatable {
         public var setting: Setting
         public var delta: Int
+        /// The session that asked for it.
+        public var session: UUID?
+
+        public init(setting: Setting, delta: Int, session: UUID? = nil) {
+            self.setting = setting
+            self.delta = delta
+            self.session = session
+        }
     }
 
     public enum Setting: String, Codable, Sendable {
@@ -116,7 +124,7 @@ public struct AnswerTuning: Codable, Sendable, Equatable {
 
     /// Applies one session's review, within the limits. Returns what changed, for the reader.
     public mutating func learn(from review: TuningReview, turns: [(id: Int, text: String)],
-                               eagerness: AnswerEagerness, now: Date = .now) -> [String] {
+                               eagerness: AnswerEagerness, session: UUID? = nil, now: Date = .now) -> [String] {
         var changes: [String] = []
         let ids = Set(turns.map(\.id))
         let needed = review.needed.intersection(ids)
@@ -154,10 +162,27 @@ public struct AnswerTuning: Codable, Sendable, Equatable {
             }
         }
 
+        // Without turns that needed an answer there is no measure: every trigger would count as noise.
+        guard !needed.isEmpty else {
+            pendingNudge = nil
+            return changes
+        }
+
+        // A phrase in place that only made noise this session goes.
+        for cue in cues {
+            var without = self
+            without.cues.removeAll { $0 == cue }
+            let lost = triggered(turns, eagerness: eagerness).subtracting(without.triggered(turns, eagerness: eagerness))
+            if lost.count >= 2, lost.intersection(needed).isEmpty {
+                cues.removeAll { $0 == cue }
+                changes.append("− “\(cue)”")
+            }
+        }
+
         // Phrases: each must catch a needed turn that was missed, at the cost of at most one other.
         for cue in review.cues.prefix(3) {
             let phrase = cue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard (2...16).contains(phrase.count), !cues.contains(phrase) else { continue }
+            guard (2...16).contains(phrase.count), !cues.contains(where: { $0.lowercased() == phrase.lowercased() }) else { continue }
             var trial = self
             trial.cues.append(phrase)
             let before = triggered(turns, eagerness: eagerness)
@@ -170,8 +195,11 @@ public struct AnswerTuning: Codable, Sendable, Equatable {
         }
 
         // Thresholds: one step, only when two sessions in a row agree.
-        if let nudge = bestNudge(turns, needed: needed, eagerness: eagerness) {
-            if nudge == pendingNudge, let moved = applying(nudge) {
+        if var nudge = bestNudge(turns, needed: needed, eagerness: eagerness) {
+            nudge.session = session
+            // The second vote has to come from a different session.
+            if let pending = pendingNudge, pending.setting == nudge.setting, pending.delta == nudge.delta,
+               pending.session != session || session == nil, let moved = applying(nudge) {
                 let name = nudge.setting == .floor ? "floor" : "eagerWeight"
                 let old = nudge.setting == .floor ? floor : eagerWeight
                 let new = nudge.setting == .floor ? moved.floor : moved.eagerWeight
@@ -254,7 +282,9 @@ public enum TuningPrompt {
         let text = SummaryPrompt.clean(reply)
         guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"), start < end,
               let data = String(text[start...end]).data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              // Misses and noise are measured against this list: without it there is nothing to learn from.
+              object["needed"] is [Any] else { return nil }
         func ints(_ key: String) -> Set<Int> { Set((object[key] as? [Any] ?? []).compactMap { ($0 as? Int) ?? Int("\($0)") }) }
         var review = TuningReview(needed: ints("needed"), keep: ints("keep"), drop: ints("drop"))
         review.cues = (object["cues"] as? [Any] ?? []).compactMap { $0 as? String }
@@ -278,7 +308,13 @@ extension Transcript {
     /// A compact numbered account of the session for review: turns, and under them what the
     /// assistant showed. Long turns are cut, the reader's backchannel ("嗯") left out.
     public func tuningDigest(limit: Int = 45_000) -> String {
-        guard let start = lines.first?.startedAt else { return "" }
+        tuningReviewInput(limit: limit).digest
+    }
+
+    /// The digest and the first line id in it: turns before that were not shown to the model,
+    /// so they must not be judged.
+    public func tuningReviewInput(limit: Int = 45_000) -> (digest: String, firstID: Int) {
+        guard let start = lines.first?.startedAt else { return ("", 0) }
         func clock(_ d: Date) -> String {
             let s = max(0, Int(d.timeIntervalSince(start)))
             return String(format: "%02d:%02d", s / 60, s % 60)
@@ -303,8 +339,19 @@ extension Transcript {
                 }
             }
         }
-        var digest = out.joined(separator: "\n")
-        if digest.count > limit { digest = String(digest.suffix(limit)) }
-        return digest
+        // Drop whole entries from the front until it fits.
+        var total = out.reduce(0) { $0 + $1.count + 1 }
+        var first = 0
+        while total > limit, first < out.count - 1 {
+            total -= out[first].count + 1
+            first += 1
+        }
+        while first < out.count, !out[first].hasPrefix("[") { first += 1 }
+        let kept = Array(out[first...])
+        let firstID = kept.first.flatMap { entry -> Int? in
+            guard let close = entry.firstIndex(of: "]") else { return nil }
+            return Int(entry[entry.index(after: entry.startIndex)..<close])
+        } ?? 0
+        return (kept.joined(separator: "\n"), firstID)
     }
 }

@@ -209,7 +209,7 @@ struct SummaryPanel: View {
     /// Older sessions without one count as interviews when they have typed interview answers.
     private var sessionMode: AssistantMode? {
         if model.isLive(transcript) { return model.assistantMode }
-        return transcript.mode ?? (transcript.answers.contains { $0.kind != nil } ? .interview : nil)
+        return transcript.mode ?? (transcript.answers.contains { $0.kind != nil && $0.kind != "asked" && $0.kind != "for-me" } ? .interview : nil)
     }
 
     @ViewBuilder private var summary: some View {
@@ -972,8 +972,15 @@ private struct AskBar: View {
     var body: some View {
         let ready = model.assistant.isAskConfigured
         let busy = model.answerer.asking?.session == transcript.id
+        let failure = model.answerer.askFailure.flatMap { $0.session == transcript.id ? $0 : nil }
         VStack(spacing: 0) {
             Divider()
+            if let failure {
+                Text(failure.error)
+                    .font(.caption).foregroundStyle(.red).lineLimit(2).help(failure.error)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, SummaryPanel.inset).padding(.top, 8)
+            }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("", text: $draft,
                           prompt: Text(ready ? tr("Ask about this conversation…") : tr("Pick a model in Settings › Assistant to ask questions")),
@@ -1018,6 +1025,10 @@ private struct AskBar: View {
         // A frosted backing so answers scrolling underneath don't show through the box,
         // above all on the see-through floating card.
         .background(.thickMaterial)
+        // A question that failed comes back into the box to send again.
+        .onChange(of: failure?.question) { _, question in
+            if let question, draft.isEmpty { draft = question }
+        }
     }
 
     private var canSend: Bool {
@@ -1064,9 +1075,7 @@ private struct StackedSplit<Top: View, Bottom: View>: View {
                 }
                 .frame(height: 8)
                 .contentShape(.rect)
-                .onHover { inside in
-                    if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-                }
+                .pointerStyle(.frameResize(position: .top))
                 .gesture(DragGesture(minimumDistance: 1)
                     .onChanged { value in
                         let base = start ?? fraction

@@ -97,15 +97,18 @@ final class CaptionPanelController: NSObject, NSWindowDelegate {
     /// The toolbar space, the captions, and the answers under them, as the layout asks.
     private var targetHeight: CGFloat {
         let layout = model.captionLayout
-        return Self.chrome
-            + (layout.showsCaptions ? metrics.height(lines: model.captionLines) : 0)
-            + (layout.showsAnswers ? CGFloat(model.captionAnswersHeight) + (layout.showsCaptions ? Self.toolbarGap : 0) : 0)
+        let captions = layout.showsCaptions ? metrics.height(lines: model.captionLines) : 0
+        let gap = layout.showsCaptions && layout.showsAnswers ? Self.toolbarGap : 0
+        // The answers take what the screen has left, never more.
+        let room = NSScreen.main?.visibleFrame.height ?? 900
+        let answers = layout.showsAnswers ? min(CGFloat(model.captionAnswersHeight), max(120, room - captions - gap - Self.chrome)) : 0
+        return Self.chrome + captions + gap + answers
     }
 
-    private var screen: NSScreen { panel.screen ?? NSScreen.main ?? NSScreen.screens[0] }
+    private var screen: NSScreen? { panel.screen ?? NSScreen.main ?? NSScreen.screens.first }
 
     private func initialFrame() -> NSRect {
-        let visible = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
+        let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let d = UserDefaults.standard
         let width = (d.object(forKey: "captionWidth") as? Double).map { CGFloat($0) } ?? min(visible.width * 0.6, 900)
         var frame = NSRect(x: visible.midX - width / 2, y: visible.minY + max(48, visible.height * 0.08),
@@ -117,7 +120,7 @@ final class CaptionPanelController: NSObject, NSWindowDelegate {
     }
 
     private func constrain(_ frame: NSRect) -> NSRect {
-        let bounds = (NSScreen.screens.first { $0.frame.intersects(frame) } ?? screen).visibleFrame
+        guard let bounds = (NSScreen.screens.first { $0.frame.intersects(frame) } ?? screen)?.visibleFrame else { return frame }
         var f = frame
         f.size.width = min(max(f.width, Self.minWidth), bounds.width)
         f.origin.x = min(max(f.minX, bounds.minX), bounds.maxX - f.width)
@@ -267,7 +270,7 @@ final class CaptionPanelController: NSObject, NSWindowDelegate {
             windowDidMove(Notification(name: NSWindow.didMoveNotification))
             return
         }
-        let bounds = screen.visibleFrame
+        guard let bounds = screen?.visibleFrame else { return }
         var frame = panel.frame
         if abs(frame.midX - bounds.midX) < 28, abs(frame.midX - bounds.midX) > 0.5 {
             frame.origin.x = bounds.midX - frame.width / 2

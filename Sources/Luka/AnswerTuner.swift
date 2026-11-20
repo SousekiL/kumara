@@ -24,7 +24,8 @@ final class AnswerTuner {
     private(set) var lastReport: String?
 
     @ObservationIgnored private let defaults = UserDefaults.standard
-    @ObservationIgnored private var reviewed: Set<UUID> = []
+    /// Sessions already learned from, with how long they were then, kept across launches.
+    @ObservationIgnored private var reviewed: [String: Int] = [:]
     static let modes: [AssistantMode] = [.interview, .meeting]
 
     init() {
@@ -33,6 +34,7 @@ final class AnswerTuner {
            let saved = try? JSONDecoder().decode([String: AnswerTuning].self, from: data) {
             for (key, value) in saved { if let mode = AssistantMode(rawValue: key) { tunings[mode] = value } }
         }
+        reviewed = defaults.dictionary(forKey: "answers.tuning.reviewed") as? [String: Int] ?? [:]
         if let data = defaults.data(forKey: "answers.tuning.history"),
            let saved = try? JSONDecoder().decode([Version].self, from: data) {
             history = saved
@@ -45,15 +47,21 @@ final class AnswerTuner {
 
     /// Reviews a finished session in the background, once. Skips ones too short to learn from.
     func review(_ t: Transcript, mode: AssistantMode, service: AssistantService, onChange: @escaping (String) -> Void) {
-        guard enabled, Self.modes.contains(mode), service.isConfigured, !reviewed.contains(t.id), !reviewing else { return }
+        guard enabled, Self.modes.contains(mode), service.isConfigured, !reviewing else { return }
+        // Once per session; again only when it has grown by a fair amount since.
+        let key = t.id.uuidString
+        if let seen = reviewed[key], t.lines.count < seen + 40 { return }
         guard let first = t.lines.first?.startedAt, let last = t.lines.last?.startedAt,
               last.timeIntervalSince(first) >= 5 * 60, t.theirTurns.count >= 8 else { return }
-        reviewed.insert(t.id)
         let current = tuning(for: mode)
+        let input = t.tuningReviewInput()
         guard let request = service.request(system: TuningPrompt.system(mode: mode),
-                                            user: TuningPrompt.user(digest: t.tuningDigest(), tuning: current),
+                                            user: TuningPrompt.user(digest: input.digest, tuning: current),
                                             maxTokens: 4_000) else { return }
-        let turns = t.theirTurns
+        // Judge only the turns the model was shown.
+        let turns = t.theirTurns.filter { $0.id >= input.firstID }
+        let session = t.id
+        let size = t.lines.count
         reviewing = true
         Task {
             defer { reviewing = false }
@@ -63,17 +71,22 @@ final class AnswerTuner {
                     lastReport = tr("The last review couldn’t be read; nothing changed.")
                     return
                 }
-                apply(review, turns: turns, mode: mode, onChange: onChange)
+                // Marked only now: a failed review gets another chance.
+                if reviewed.count > 300 { reviewed.removeAll() }
+                reviewed[key] = size
+                defaults.set(reviewed, forKey: "answers.tuning.reviewed")
+                apply(review, turns: turns, mode: mode, session: session, onChange: onChange)
             } catch {
                 AudioLog.write("tuning review failed: \(error.localizedDescription)")
             }
         }
     }
 
-    private func apply(_ review: TuningReview, turns: [(id: Int, text: String)], mode: AssistantMode, onChange: (String) -> Void) {
+    private func apply(_ review: TuningReview, turns: [(id: Int, text: String)], mode: AssistantMode, session: UUID,
+                       onChange: (String) -> Void) {
         let before = tuning(for: mode)
         var after = before
-        let changes = after.learn(from: review, turns: turns, eagerness: mode.eagerness)
+        let changes = after.learn(from: review, turns: turns, eagerness: mode.eagerness, session: session)
         let missed = before.score(turns, needed: review.needed, eagerness: mode.eagerness).missed
         tunings[mode] = after
         if !changes.isEmpty {
@@ -102,6 +115,15 @@ final class AnswerTuner {
         guard let rule = t.rules.first(where: { $0.id == id }) else { return }
         history.insert(Version(date: .now, mode: mode, before: t, changes: ["− " + rule.text]), at: 0)
         t.rules.removeAll { $0.id == id }
+        tunings[mode] = t
+        save()
+    }
+
+    func removeCue(_ cue: String, mode: AssistantMode) {
+        var t = tuning(for: mode)
+        guard t.cues.contains(cue) else { return }
+        history.insert(Version(date: .now, mode: mode, before: t, changes: ["− “\(cue)”"]), at: 0)
+        t.cues.removeAll { $0 == cue }
         tunings[mode] = t
         save()
     }

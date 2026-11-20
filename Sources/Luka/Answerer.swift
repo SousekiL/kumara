@@ -80,6 +80,8 @@ final class Answerer {
     private(set) var knowledgeCharacters = 0
     private(set) var working = false
     private(set) var lastError: String?
+    /// A typed question that failed, with why: the ask box offers it again.
+    private(set) var askFailure: (session: UUID, question: String, error: String)?
     /// The answer or polish being written right now.
     private(set) var live: Live?
     /// Learns from each finished session when and how to answer.
@@ -94,6 +96,8 @@ final class Answerer {
     @ObservationIgnored var onAnswer: () -> Void = {}
     @ObservationIgnored private var knowledge = KnowledgeBase()
     @ObservationIgnored private var handled: Set<Int> = []
+    /// A typed question was answered into this session, which may not be the live one: save it.
+    @ObservationIgnored var onAsked: (Transcript) -> Void = { _ in }
     @ObservationIgnored private var sessionID: UUID?
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
     /// The reply being written, so a new session or turning answers off can stop it.
@@ -194,7 +198,8 @@ final class Answerer {
     private func answer(_ id: Int, question: String, asker: SpeakerID?, in t: Transcript, mode: AssistantMode,
                         language: OutputLanguage, name: (SpeakerID) -> String, force: Bool) {
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
-        let previous = force ? [] : t.answers.suffix(3).map(\.shownQuestion)
+        // Only questions the other side asked: my own answers and typed questions aren't repeats to skip.
+        let previous = force ? [] : t.answers.filter { $0.kind != "polish" && $0.kind != "asked" }.suffix(3).map(\.shownQuestion)
         let user = AnswerPrompt.user(question: question, asker: asker.map(name) ?? "someone",
                                      conversation: conversation, knowledge: knowledge.excerpts(for: question),
                                      previous: previous, force: force)
@@ -244,7 +249,9 @@ final class Answerer {
                     guard let self, self.live?.id == start.id else { return }
                     let first = self.live?.text == nil
                     defer { if first, self.live?.text != nil { self.onAnswer() } }
-                    if !start.polish, self.live?.committed == false, AnswerPrompt.committed(text) { self.live?.committed = true }
+                    // Committed once the header starts, or, for a model that skips the header, once there is text to show.
+                    if !start.polish, self.live?.committed == false,
+                       AnswerPrompt.committed(text) || AnswerPrompt.partial(text) != nil { self.live?.committed = true }
                     if start.polish {
                         self.live?.text = PolishPrompt.partial(text)
                     } else if let shown = AnswerPrompt.partial(text) {
@@ -310,6 +317,7 @@ final class Answerer {
         guard service.askRequest(system: system, user: user, thinking: order[0]) != nil else { return }
         let endpoint = service.askEndpoint
         let start = Live(session: t.id, id: id, question: question, polish: false, asked: true)
+        askFailure = nil
         asking = start
         panelShowsAnswers = true
         askTask = Task {
@@ -336,11 +344,11 @@ final class Answerer {
                 t.answers.append(QuestionAnswer(id: id, question: question, answer: answer.text,
                                                 fromKnowledge: answer.source == "knowledge", createdAt: .now,
                                                 kind: "asked", source: answer.source))
-                lastError = nil
+                onAsked(t)
             } catch let error where Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
                 // Replaced by a newer question.
             } catch {
-                lastError = error.localizedDescription
+                askFailure = (t.id, question, error.localizedDescription)
                 AudioLog.write("ask failed: \(error.localizedDescription)")
             }
         }

@@ -95,7 +95,7 @@ public struct SummaryEndpoint: Sendable, Equatable {
     /// Whether an error from the service is about the thinking settings, so the next style is worth trying.
     public static func rejectsThinking(_ message: String) -> Bool {
         let m = message.lowercased()
-        return ["thinking", "output_config", "effort", "reasoning", "adaptive"].contains { m.contains($0) }
+        return ["thinking", "output_config", "effort", "reasoning", "adaptive", "max_tokens"].contains { m.contains($0) }
     }
 
     /// `stream` asks for server-sent events, read with `streamChunk(_:)`.
@@ -105,7 +105,8 @@ public struct SummaryEndpoint: Sendable, Equatable {
         guard let url else { return nil }
         var r = URLRequest(url: url)
         r.httpMethod = "POST"
-        r.timeoutInterval = 60
+        // A long reply sent all at once says nothing until it is whole.
+        r.timeoutInterval = maxTokens >= 3_000 ? 180 : 60
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         var body: [String: Any]
@@ -439,10 +440,11 @@ extension Transcript {
         var total = 0
         var last: Int?
         var truncated = false
-        let candidates = lines.filter { line in
-            (lineID.map { line.id > $0 } ?? true) && !(closedOnly && line.isOpen)
-                && !line.original.trimmingCharacters(in: .whitespaces).isEmpty
+        var candidates = lines.filter { line in
+            (lineID.map { line.id > $0 } ?? true) && !line.original.trimmingCharacters(in: .whitespaces).isEmpty
         }
+        // Stop at the first line still being spoken: covering a later one would skip it for good.
+        if closedOnly, let open = candidates.firstIndex(where: \.isOpen) { candidates = Array(candidates[..<open]) }
         for line in candidates.reversed() {
             let who = line.speaker.map { name(canonical($0)) } ?? "Speaker"
             let entry = "\(who): \(line.original.trimmingCharacters(in: .whitespacesAndNewlines))"

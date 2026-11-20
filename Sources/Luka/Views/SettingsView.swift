@@ -575,8 +575,15 @@ private struct TuningSection: View {
                         }
                     }
                     if !t.cues.isEmpty {
-                        Text(tr("Also answers turns with") + ": " + t.cues.map { "“\($0)”" }.joined(separator: " · "))
-                            .foregroundStyle(.secondary)
+                        Text(tr("Also answers turns with") + ":").foregroundStyle(.secondary)
+                        ForEach(t.cues, id: \.self) { cue in
+                            HStack {
+                                Text(verbatim: "“\(cue)”")
+                                Spacer()
+                                Button { tuner.removeCue(cue, mode: mode) } label: { Image(systemName: "xmark.circle") }
+                                    .buttonStyle(.borderless)
+                            }
+                        }
                     }
                     HStack {
                         Spacer()

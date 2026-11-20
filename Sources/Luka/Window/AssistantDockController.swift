@@ -55,11 +55,12 @@ final class AssistantDockController: NSObject {
 
     // MARK: Frames
 
-    private var screen: NSScreen { button.screen ?? NSScreen.main ?? NSScreen.screens[0] }
+    private static let fallbackFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)
+    private var visibleFrame: NSRect { (button.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? Self.fallbackFrame }
 
     /// On the right edge, at the height it was last left at (kept as a fraction, so it survives a screen change).
     private func initialButtonFrame() -> NSRect {
-        let visible = (NSScreen.main ?? NSScreen.screens[0]).visibleFrame
+        let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? Self.fallbackFrame
         let fraction = UserDefaults.standard.object(forKey: "dockButtonY") as? Double ?? 0.55
         let y = visible.minY + (visible.height - Self.buttonSize.height) * CGFloat(min(max(fraction, 0), 1))
         return NSRect(x: visible.maxX - Self.buttonSize.width - Self.edgeInset, y: y,
@@ -68,7 +69,7 @@ final class AssistantDockController: NSObject {
 
     /// Beside the button, centered on it as far as the screen allows.
     private func popupFrame() -> NSRect {
-        let visible = screen.visibleFrame
+        let visible = visibleFrame
         let b = button.frame
         // Stacked, the summary and the answers share the card: give it most of the screen's height.
         let height = model.panelStacked ? max(Self.popupSize.height, min(900, visible.height * 0.86)) : Self.popupSize.height
@@ -153,7 +154,7 @@ final class AssistantDockController: NSObject {
         if abs(dy) > 4 { d.moved = true }
         drag = d
         guard d.moved else { return }
-        let visible = screen.visibleFrame
+        let visible = visibleFrame
         var frame = d.frame
         frame.origin.y = min(max(d.frame.minY + dy, visible.minY + 8), visible.maxY - frame.height - 8)
         button.setFrame(frame, display: true)
@@ -168,7 +169,7 @@ final class AssistantDockController: NSObject {
             if top { model.dockOpen.toggle() } else { model.setCaptions(!model.captionsVisible) }
             return
         }
-        let visible = screen.visibleFrame
+        let visible = visibleFrame
         let range = max(1, visible.height - button.frame.height)
         UserDefaults.standard.set(Double((button.frame.minY - visible.minY) / range), forKey: "dockButtonY")
     }

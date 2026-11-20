@@ -280,14 +280,19 @@ public enum AnswerPrompt {
         var body: [Substring] = []
         var lines = SummaryPrompt.clean(reply).split(separator: "\n", omittingEmptySubsequences: false)
         // A model that changed its mind halfway starts over with a new SOURCE line: keep only the last attempt.
-        if let last = lines.lastIndex(where: { $0.trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("SOURCE:") }) {
+        if let last = Self.lastHeader(lines.map(String.init)) {
             var start = last
             if start > 0, lines[start - 1].trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("TYPE:") { start -= 1 }
             lines = Array(lines[start...])
         }
         // SOURCE and TYPE lead the reply, in either order.
         var leading = true
+        var sawHeader = false
         for line in lines {
+            if leading {
+                let u = line.trimmingCharacters(in: .whitespaces).uppercased()
+                if u.hasPrefix("SOURCE:") || u.hasPrefix("TYPE:") || u.hasPrefix("QUESTION:") { sawHeader = true }
+            }
             let upper = line.trimmingCharacters(in: .whitespaces).uppercased()
             if leading, upper.hasPrefix("SOURCE:") {
                 fromKnowledge = upper.contains("KNOWLEDGE")
@@ -304,8 +309,20 @@ public enum AnswerPrompt {
         }
         let text = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         let bare = text.trimmingCharacters(in: CharacterSet(charactersIn: " .。\n")).uppercased()
-        if bare.isEmpty || bare == "SKIP" { return nil }
+        // "SKIP - small talk" is still a skip; after real headers, only a bare SKIP is.
+        if bare.isEmpty || bare == "SKIP" || (!sawHeader && bare.hasPrefix("SKIP")) { return nil }
         return (text, fromKnowledge, kind, question)
+    }
+
+    /// The last real SOURCE header: "SOURCE:" followed by one of the words the format allows.
+    /// A body line that merely begins "Source: the meeting" doesn't count.
+    static func lastHeader(_ lines: [String]) -> Int? {
+        lines.indices.last { i in
+            let upper = lines[i].trimmingCharacters(in: .whitespaces).uppercased()
+            guard upper.hasPrefix("SOURCE:") else { return false }
+            let value = upper.dropFirst(7).trimmingCharacters(in: CharacterSet(charactersIn: " .\"'"))
+            return ["KNOWLEDGE", "MODEL", "TRANSCRIPT", "CONVERSATION", "KNOWLEDGE BASE"].contains(value)
+        }
     }
 }
 
@@ -373,7 +390,7 @@ public enum AskPrompt {
         var lines = SummaryPrompt.clean(reply).split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         var source = "model"
         // Keep only the last SOURCE block, should the model have started over.
-        if let last = lines.lastIndex(where: { $0.trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("SOURCE:") }) {
+        if let last = AnswerPrompt.lastHeader(lines) {
             let value = lines[last].split(separator: ":", maxSplits: 1).last.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
             if value.hasPrefix("transcript") || value.hasPrefix("conversation") { source = "transcript" }
             else if value.hasPrefix("knowledge") { source = "knowledge" }

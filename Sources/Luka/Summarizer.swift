@@ -37,6 +37,8 @@ final class Summarizer {
     // MARK: Updating
 
     /// Called every second while listening; adds to the notes once a little more has been said.
+    @ObservationIgnored private var pendingCatchUp: (() -> Void)?
+
     func tick(_ t: Transcript, mode: AssistantMode, language: OutputLanguage, name: @escaping (SpeakerID) -> String) {
         guard enabled, service.isConfigured, !working else { return }
         let now = Date.now
@@ -53,7 +55,12 @@ final class Summarizer {
 
     /// When listening stops: note whatever is left, including a line still open.
     func catchUp(_ t: Transcript, mode: AssistantMode, language: OutputLanguage, name: @escaping (SpeakerID) -> String) {
-        guard enabled, service.isConfigured, !working else { return }
+        guard enabled, service.isConfigured else { return }
+        if working {
+            // An update is on its way: note the rest once it lands.
+            pendingCatchUp = { [weak self] in self?.run(t, mode: mode, rewrite: false, closedOnly: false, language: language, name: name) }
+            return
+        }
         run(t, mode: mode, rewrite: false, closedOnly: false, language: language, name: name)
     }
 
@@ -94,7 +101,13 @@ final class Summarizer {
         working = true
         lastAttempt = .now
         Task {
-            defer { working = false }
+            defer {
+                working = false
+                if let next = pendingCatchUp {
+                    pendingCatchUp = nil
+                    next()
+                }
+            }
             do {
                 let reply = try await service.send(request)
                 // Lines noted meanwhile by another path are never unmarked.

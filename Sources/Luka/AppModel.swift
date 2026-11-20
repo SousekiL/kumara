@@ -167,7 +167,8 @@ final class AppModel {
     /// Keep the latest question someone asked above the captions.
     var pinsQuestions: Bool { didSet { store(pinsQuestions, "pinsQuestions") } }
     /// The pinned question the user closed; it stays closed until a new one is asked.
-    var dismissedQuestion: Int?
+    /// The pinned question the reader closed, in which session: line ids start over in each.
+    var dismissedQuestion: (session: UUID, id: Int)?
     /// Me / Them applies to Mac audio + microphone, outside three-way mode (which already runs a stream per language).
     var splitsBySource: Bool { separatesSpeakers && audioSource == .both && mode != .threeWay }
 
@@ -421,6 +422,7 @@ final class AppModel {
         }
         answerer.onEnabledChange = { [weak self] in self?.answersChanged() }
         watchSystemTheme()
+        answerer.onAsked = { [weak self] t in self?.store.save(t) }
         answerer.onAnswer = { [weak self] in
             guard let self else { return }
             // A fresh answer is what the reader wants to see next.
@@ -614,6 +616,18 @@ final class AppModel {
 
     /// Stops listening and closes the stream. Starting again continues the same session.
     func endSession() {
+        stopListening()
+        store.save(transcript)
+        store.saveDirty()
+        summarizer.catchUp(transcript, mode: assistantMode, language: assistantLanguage, name: summaryName(in: transcript))
+        // Learn from the session how to answer next time, in small steps.
+        if answerer.enabled {
+            answerer.tuner.review(transcript, mode: assistantMode, service: assistant) { [weak self] note in self?.show(note) }
+        }
+    }
+
+    /// Stops the audio and the stream without sending anything more to the model.
+    private func stopListening() {
         audio.stop()
         client.disconnect()
         idleDisconnect?.cancel()
@@ -622,19 +636,14 @@ final class AppModel {
         startedAt = nil
         renaming = nil
         transcript.clearProvisional()
-        store.save(transcript)
         flushUsage()
-        summarizer.catchUp(transcript, mode: assistantMode, language: assistantLanguage, name: summaryName(in: transcript))
-        // Learn from the session how to answer next time, in small steps.
-        if answerer.enabled {
-            answerer.tuner.review(transcript, mode: assistantMode, service: assistant) { [weak self] note in self?.show(note) }
-        }
         // Soniox's own numbers lag a little; look again once this session has been billed.
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.refreshAccount() }
     }
 
     func saveLive() {
         store.save(transcript)
+        store.saveDirty()
     }
 
     var selectedTranscript: Transcript? {
@@ -646,9 +655,12 @@ final class AppModel {
 
     func deleteSession(_ id: UUID) {
         if id == transcript.id {
-            endSession()
+            // A session being deleted is not summarized or learned from.
+            stopListening()
+            answerer.stop()
             transcript = Transcript()
             store.track(transcript)
+            resetSessionUsage()
         }
         store.delete(id)
         if selectedID == id { selectedID = transcript.id }
@@ -936,7 +948,7 @@ final class AppModel {
     var pinnedQuestion: Line? {
         guard pinsQuestions, !transcript.lines.isEmpty else { return nil }
         let hasChannels = transcript.visibleSpeakers.contains { Channel($0.id) != nil }
-        guard let line = transcript.pinnedQuestion(channelsOnly: hasChannels), line.id != dismissedQuestion else { return nil }
+        guard let line = transcript.pinnedQuestion(channelsOnly: hasChannels), !(dismissedQuestion?.session == transcript.id && dismissedQuestion?.id == line.id) else { return nil }
         return line
     }
 
