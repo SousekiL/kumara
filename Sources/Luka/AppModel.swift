@@ -1000,6 +1000,11 @@ final class AppModel {
     }
 
     /// A question the reader typed in the panel, about this session.
+    func answerAnyway(_ t: Transcript) {
+        let mode = isLive(t) ? assistantMode : (t.mode ?? assistantMode)
+        answerer.answerAnyway(in: t, mode: mode, language: assistantLanguage, name: summaryName(in: t))
+    }
+
     func ask(_ question: String, in t: Transcript) {
         let mode = isLive(t) ? assistantMode : (t.mode ?? assistantMode)
         answerer.ask(question, in: t, mode: mode, language: assistantLanguage, name: summaryName(in: t))

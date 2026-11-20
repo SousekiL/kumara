@@ -218,7 +218,8 @@ public enum AnswerPrompt {
         """
     }
 
-    public static func user(question: String, asker: String, conversation: String, knowledge: String, previous: [String] = []) -> String {
+    public static func user(question: String, asker: String, conversation: String, knowledge: String, previous: [String] = [],
+                            force: Bool = false) -> String {
         var out = ""
         if !knowledge.isEmpty {
             out += "The reader's knowledge base (excerpts):\n<knowledge>\n\(knowledge)\n</knowledge>\n\n"
@@ -231,6 +232,9 @@ public enum AnswerPrompt {
             out += previous.map { "- \($0)" }.joined(separator: "\n") + "\n\n"
         }
         out += "The question to answer, asked by \(asker):\n<question>\n\(question)\n</question>"
+        if force {
+            out += "\n\nThe reader asked for an answer to this one: answer it, never SKIP."
+        }
         return out
     }
 
@@ -249,6 +253,13 @@ public enum AnswerPrompt {
         }
         guard let parsed = parse(lines.joined(separator: "\n")) else { return nil }
         return Self.maySkip(parsed.text) ? nil : parsed
+    }
+
+    /// Whether the model has committed to answering: its reply has begun with a header line,
+    /// which a skip never has. Until then the question may still turn out to need no answer.
+    public static func committed(_ reply: String) -> Bool {
+        let head = SummaryPrompt.clean(reply).trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return ["SOURCE:", "TYPE:", "QUESTION:"].contains { head.hasPrefix($0) }
     }
 
     /// Whether text so far could still be the start of SKIP.

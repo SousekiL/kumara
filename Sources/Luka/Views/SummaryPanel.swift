@@ -279,6 +279,9 @@ struct SummaryPanel: View {
     @ViewBuilder private var answersStatus: some View {
         if let error = answerer.lastError {
             Text(error).foregroundStyle(.red).help(error)
+        } else if let live = answerer.live, live.session == transcript.id, !live.polish, !live.committed {
+            // Deciding whether it needs an answer at all.
+            Text(tr("Checking") + ": " + (Questions.lastSentence(live.question) ?? live.question)).help(live.question)
         } else if answerer.working {
             Text(tr("Answering…"))
         } else if !answerer.enabled {
@@ -311,6 +314,23 @@ struct SummaryPanel: View {
 
     @ViewBuilder private var answers: some View {
         channelHint
+        // What was judged to need no answer, with a way to answer it anyway.
+        if let s = answerer.skipped, s.session == transcript.id, answerer.live == nil {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "arrow.uturn.right").foregroundStyle(.tertiary)
+                Text(tr("Skipped, didn’t look like it needs an answer") + ": " + (Questions.lastSentence(s.question) ?? s.question))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .help(s.question)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button(tr("Answer anyway")) { model.answerAnyway(transcript) }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(LukaTheme.accent)
+            }
+            .font(.caption)
+            .padding(.bottom, 12)
+            .transition(.opacity)
+        }
         let rows = answerRows
         if !rows.isEmpty {
             // Newest first and at full strength; earlier ones step back.
@@ -343,7 +363,9 @@ struct SummaryPanel: View {
         // A polish with nothing to fix only feeds the question tracker.
         var rows = transcript.answers.reversed().filter { !($0.kind == "polish" && $0.answer.isEmpty) }.map(AnswerRow.init)
         // A polish shows only once it has a fix; most of its reply is for the tracker and the review.
-        if let live = answerer.live, live.session == transcript.id, !live.polish || live.text != nil,
+        // A heard question shows only once the model commits to answering it: until then it may
+        // still judge that it needs none, and a card that appears and vanishes is just noise.
+        if let live = answerer.live, live.session == transcript.id, live.polish ? live.text != nil : live.committed,
            !rows.contains(where: { $0.id == live.id }) {
             rows.insert(AnswerRow(live), at: 0)
         }

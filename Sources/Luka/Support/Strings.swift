@@ -607,5 +607,8 @@ enum Strings {
         "Floating button on": "浮动按钮已显示",
         "Floating button off": "浮动按钮已隐藏",
         "Show / hide the floating button": "显示 / 隐藏浮动按钮",
+        "Checking": "正在判断",
+        "Skipped, didn’t look like it needs an answer": "已跳过，看起来不需要回答",
+        "Answer anyway": "仍然回答",
     ]
 }

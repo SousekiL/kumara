@@ -34,6 +34,16 @@ final class Answerer {
         var source: String?
         /// The question restated to stand on its own, once the model has written it.
         var restated: String?
+        /// The model has begun a real answer, so the card can show; until then it may still skip.
+        var committed = false
+    }
+
+    /// A heard question the model judged needed no answer, offered to answer anyway.
+    struct Skipped: Equatable {
+        let session: UUID
+        let id: Int
+        let question: String
+        let asker: SpeakerID?
     }
 
     private let defaults = UserDefaults.standard
@@ -72,6 +82,8 @@ final class Answerer {
     private(set) var lastError: String?
     /// The answer or polish being written right now.
     private(set) var live: Live?
+    /// The question most recently skipped, until the next one is taken up.
+    private(set) var skipped: Skipped?
     /// The answer to a question the reader typed, being written; separate, so neither waits for the other.
     private(set) var asking: Live?
     @ObservationIgnored private var askTask: Task<Void, Never>?
@@ -167,14 +179,28 @@ final class Answerer {
         }
         handled.formUnion(waiting.all)
         let line = waiting.line
+        answer(line.id, question: line.original, asker: line.speaker, in: t, mode: mode, language: language, name: name, force: false)
+    }
+
+    private func answer(_ id: Int, question: String, asker: SpeakerID?, in t: Transcript, mode: AssistantMode,
+                        language: OutputLanguage, name: (SpeakerID) -> String, force: Bool) {
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
-        let previous = t.answers.suffix(3).map(\.shownQuestion)
-        let user = AnswerPrompt.user(question: line.original, asker: line.speaker.map(name) ?? "someone",
-                                     conversation: conversation, knowledge: knowledge.excerpts(for: line.original),
-                                     previous: previous)
+        let previous = force ? [] : t.answers.suffix(3).map(\.shownQuestion)
+        let user = AnswerPrompt.user(question: question, asker: asker.map(name) ?? "someone",
+                                     conversation: conversation, knowledge: knowledge.excerpts(for: question),
+                                     previous: previous, force: force)
         guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context),
                                             user: user, maxTokens: 4_000, stream: true) else { return }
-        write(request, into: t, live: Live(session: t.id, id: line.id, question: line.original, polish: false))
+        skipped = nil
+        write(request, into: t, live: Live(session: t.id, id: id, question: question, polish: false, committed: force),
+              asker: asker)
+    }
+
+    /// The reader disagreed with a skip: answer that question after all.
+    func answerAnyway(in t: Transcript, mode: AssistantMode, language: OutputLanguage, name: (SpeakerID) -> String) {
+        guard let s = skipped, s.session == t.id, service.isConfigured else { return }
+        if working { stop() }
+        answer(s.id, question: s.question, asker: s.asker, in: t, mode: mode, language: language, name: name, force: true)
     }
 
     /// A smoother way to say the answer I just finished, and quick fixes. Interview mode with Me / Them only.
@@ -185,11 +211,11 @@ final class Answerer {
                                      knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
         guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.context),
                                             user: user, maxTokens: 3_000, stream: true) else { return }
-        write(request, into: t, live: Live(session: t.id, id: id, question: answer.text, polish: true))
+        write(request, into: t, live: Live(session: t.id, id: id, question: answer.text, polish: true), asker: nil)
     }
 
     /// Streams the reply into `live` as it is written, then files it with the session's answers.
-    private func write(_ request: URLRequest, into t: Transcript, live start: Live) {
+    private func write(_ request: URLRequest, into t: Transcript, live start: Live, asker: SpeakerID?) {
         working = true
         live = start
         let id = UUID()
@@ -207,6 +233,7 @@ final class Answerer {
                     guard let self, self.live?.id == start.id else { return }
                     let first = self.live?.text == nil
                     defer { if first, self.live?.text != nil { self.onAnswer() } }
+                    if !start.polish, self.live?.committed == false, AnswerPrompt.committed(text) { self.live?.committed = true }
                     if start.polish {
                         self.live?.text = PolishPrompt.partial(text)
                     } else if let shown = AnswerPrompt.partial(text) {
@@ -229,7 +256,11 @@ final class Answerer {
                                           fromKnowledge: false, createdAt: .now, kind: "polish",
                                           status: feedback.status, used: feedback.used, better: feedback.better)
                 } else {
-                    guard let answer = AnswerPrompt.parse(reply) else { return }
+                    guard let answer = AnswerPrompt.parse(reply) else {
+                        // Judged not to need an answer: say so, and offer to answer anyway.
+                        skipped = Skipped(session: start.session, id: start.id, question: start.question, asker: asker)
+                        return
+                    }
                     item = QuestionAnswer(id: start.id, question: start.question, answer: answer.text,
                                           fromKnowledge: answer.fromKnowledge, createdAt: .now, kind: answer.kind,
                                           restated: answer.question)
@@ -239,6 +270,7 @@ final class Answerer {
             } catch SummaryEndpoint.ResponseError.empty {
                 // An empty reply is the model having nothing to add, not a failure.
                 lastError = nil
+                if !start.polish { skipped = Skipped(session: start.session, id: start.id, question: start.question, asker: asker) }
             } catch let error where Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
                 // Stopped on purpose.
             } catch {

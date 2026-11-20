@@ -743,5 +743,7 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(p.question == "What is a p-value?" && p.text == "The chance")
         let q = QuestionAnswer(id: 1, question: "We disagreed a lot. How did you handle it?", answer: "a", fromKnowledge: false, createdAt: .now)
         #expect(q.shownQuestion == "How did you handle it?")
+        #expect(AnswerPrompt.committed("SOURCE: mo") && !AnswerPrompt.committed("SKI") && !AnswerPrompt.committed(""))
+        #expect(AnswerPrompt.user(question: "q", asker: "a", conversation: "", knowledge: "", force: true).contains("never SKIP"))
     }
 }
