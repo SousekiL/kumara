@@ -80,6 +80,24 @@ struct SummaryPanel: View {
         @Bindable var answerer = model.answerer
         bar(title: titled ? tr("Answers") : nil) { answersStatus } actions: {
             ProgressView().controlSize(.small).opacity(answerer.working ? 1 : 0)
+            if answersOnly {
+                // Under the captions, a way back that's always in sight: the caption toolbar
+                // only appears on hover, which the scrolling answers don't always pass on.
+                Menu {
+                    Picker(tr("Show"), selection: Bindable(model).captionLayout) {
+                        ForEach(CaptionContent.allCases, id: \.self) { layout in
+                            Label(layout.title, systemImage: layout.symbol).tag(layout)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: model.captionLayout.symbol)
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(tr("Captions and answers"))
+            }
             Toggle("", isOn: $answerer.enabled)
                 .toggleStyle(.switch).controlSize(.mini).labelsHidden()
                 .help(tr("Answer questions as they’re asked"))
