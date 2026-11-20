@@ -20,6 +20,8 @@ final class SessionStore {
     /// Deleted sessions stay out for good, even if a closing view asks to save them afterwards.
     @ObservationIgnored private var deleted: Set<UUID> = []
     @ObservationIgnored private let directory: URL
+    /// Encoding and writing happen here, in order, off the main thread.
+    @ObservationIgnored private let disk = DispatchQueue(label: "luka.sessions.disk", qos: .utility)
 
     init() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -30,18 +32,32 @@ final class SessionStore {
             directory = base.appendingPathComponent("Luka/Sessions", isDirectory: true)
         }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let decoder = JSONDecoder()
-        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-        for file in files where file.pathExtension == "json" {
-            guard let data = try? Data(contentsOf: file),
-                  let snapshot = try? decoder.decode(TranscriptSnapshot.self, from: data) else { continue }
-            summaries.append(Self.summary(of: snapshot))
+        // The list fills in a moment after launch: reading every session shouldn't hold the app up.
+        let directory = directory
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let decoder = JSONDecoder()
+            let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+            var loaded: [Summary] = []
+            for file in files where file.pathExtension == "json" {
+                guard let data = try? Data(contentsOf: file),
+                      let snapshot = try? decoder.decode(TranscriptSnapshot.self, from: data) else { continue }
+                loaded.append(Self.summary(of: snapshot))
+            }
+            await self?.adopt(loaded)
         }
+    }
+
+    /// Sessions read at launch join whatever was saved or deleted meanwhile.
+    private func adopt(_ loaded: [Summary]) {
+        let known = Set(summaries.map(\.id))
+        summaries += loaded.filter { !known.contains($0.id) && !deleted.contains($0.id) }
         summaries.sort { $0.createdAt > $1.createdAt }
     }
 
     func transcript(_ id: UUID) -> Transcript? {
         if let cached = cache[id] { return cached }
+        // A write still on its way must land before the file is read.
+        disk.sync {}
         guard let data = try? Data(contentsOf: url(id)),
               let snapshot = try? JSONDecoder().decode(TranscriptSnapshot.self, from: data) else { return nil }
         let transcript = Transcript(snapshot: snapshot)
@@ -61,8 +77,11 @@ final class SessionStore {
         cache[transcript.id] = transcript
         guard !transcript.lines.isEmpty, savedRevision[transcript.id] != transcript.revision else { return }
         let snapshot = transcript.snapshot
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        try? data.write(to: url(transcript.id), options: .atomic)
+        let file = url(transcript.id)
+        disk.async {
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
+            try? data.write(to: file, options: .atomic)
+        }
         savedRevision[transcript.id] = transcript.revision
         let summary = Self.summary(of: snapshot)
         if let i = summaries.firstIndex(where: { $0.id == transcript.id }) {
@@ -79,9 +98,16 @@ final class SessionStore {
         for t in Array(cache.values) where savedRevision[t.id] != t.revision { save(t) }
     }
 
+    /// Waits for writes on their way: before quitting.
+    func flush() {
+        disk.sync {}
+    }
+
     func delete(_ id: UUID) {
         deleted.insert(id)
-        try? FileManager.default.removeItem(at: url(id))
+        let file = url(id)
+        // After any write queued for it, so the file doesn't come back.
+        disk.async { try? FileManager.default.removeItem(at: file) }
         cache[id] = nil
         savedRevision[id] = nil
         summaries.removeAll { $0.id == id }
@@ -91,7 +117,7 @@ final class SessionStore {
         directory.appendingPathComponent("\(id.uuidString).json")
     }
 
-    private static func summary(of s: TranscriptSnapshot) -> Summary {
+    private nonisolated static func summary(of s: TranscriptSnapshot) -> Summary {
         let first = s.lines.first.map { $0.expectsTranslation && !$0.translatedText.isEmpty ? $0.translatedText : $0.original } ?? ""
         return Summary(id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt,
                        preview: String(first.prefix(120)), tags: s.tags ?? [])

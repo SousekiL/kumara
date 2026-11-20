@@ -832,3 +832,47 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(t.floor == 12)
     }
 }
+
+@MainActor @Suite struct SpeakerNameTests {
+    func session() -> Transcript {
+        let t = Transcript()
+        t.ingest(tokens([("Hi, this is Irene.", true, nil), ("<end>", true, nil)], speaker: "1"))
+        t.ingest(tokens([("Hello Irene, Roy here. Nice to meet you all.", true, nil), ("<end>", true, nil)], speaker: "2"))
+        t.ingest(tokens([("Let me share my screen.", true, nil), ("<end>", true, nil)], speaker: "3"))
+        return t
+    }
+
+    @Test func sheetParseApplyUndo() throws {
+        let t = session()
+        let sheet = t.speakerSheet()
+        #expect(sheet.tags.count == 3 && sheet.text.contains("[S1 00:00] Hi, this is Irene."))
+        let reply = "```json\n{\"speakers\": [{\"tag\": \"S1\", \"person\": \"Irene\", \"confidence\": \"high\", \"why\": \"says 'this is Irene'\"}, {\"tag\": \"S2\", \"person\": \"Roy\", \"confidence\": \"medium\", \"why\": \"Roy here\"}, {\"tag\": \"S3\", \"person\": \"irene\", \"confidence\": \"low\", \"why\": \"continues\"}, {\"tag\": \"S9\", \"person\": \"X\"}], \"note\": \"\"}\n```"
+        let parsed = try #require(SpeakerPrompt.parse(reply, tags: sheet.tags))
+        #expect(parsed.proposals.count == 3 && parsed.proposals[2].confidence == .low)
+        #expect(t.apply(parsed.proposals) == 3)
+        #expect(t.visibleSpeakers.count == 2 && t.visibleSpeakers.map(\.name) == ["Irene", "Roy"])
+        #expect(t.speakerBackup != nil)
+        // Saved and reopened, it can still be undone.
+        let again = Transcript(snapshot: t.snapshot)
+        again.undoSpeakerNames()
+        #expect(again.visibleSpeakers.count == 3 && again.visibleSpeakers.allSatisfy { $0.name.isEmpty } && again.speakerBackup == nil)
+        t.resetSpeakers()
+        #expect(t.visibleSpeakers.count == 3 && !t.hasSpeakerEdits)
+    }
+
+    @Test func placeholdersMergeWithoutNamingAndSidesStayApart() {
+        let t = session()
+        let ids = t.visibleSpeakers.map(\.id)
+        t.apply([.init(id: ids[0], tag: "S1", person: "?A", confidence: .medium, why: ""),
+                 .init(id: ids[2], tag: "S3", person: "?A", confidence: .medium, why: "")])
+        #expect(t.visibleSpeakers.count == 2 && t.visibleSpeakers.allSatisfy { $0.name.isEmpty })
+
+        let call = Transcript()
+        call.ingest(tokens([("I am Felix.", true, nil), ("<end>", true, nil)]), channel: .me)
+        call.ingest(tokens([("And I am Irene.", true, nil), ("<end>", true, nil)]), channel: .them)
+        let both = call.visibleSpeakers.map(\.id)
+        call.apply(both.map { .init(id: $0, tag: "S", person: "Felix", confidence: .high, why: "") })
+        #expect(call.visibleSpeakers.count == 2)
+        #expect(SpeakerHints.parseNames("Irene，Roy; Preethi\nFelix") == ["Irene", "Roy", "Preethi", "Felix"])
+    }
+}

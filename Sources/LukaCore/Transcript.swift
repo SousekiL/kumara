@@ -131,6 +131,8 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var tags: [String]? = nil
     /// The assistant mode the session was held in; absent in older sessions.
     public var mode: String? = nil
+    /// Speakers as they were before names were worked out, to go back to.
+    public var speakerBackup: [Speaker]? = nil
 }
 
 @MainActor
@@ -147,8 +149,13 @@ public final class Transcript: Identifiable {
     /// Bumped on every content change; used to decide when to save.
     @ObservationIgnored public private(set) var revision = 0
 
-    public private(set) var lines: [Line] = []
-    public private(set) var speakers: [SpeakerID: Speaker] = [:]
+    public private(set) var lines: [Line] = [] { didSet { contentVersion &+= 1 } }
+    public private(set) var speakers: [SpeakerID: Speaker] = [:] { didSet { contentVersion &+= 1 } }
+    /// Bumped whenever lines or speakers change at all, live text included: what caches are checked against.
+    @ObservationIgnored public private(set) var contentVersion = 0
+    @ObservationIgnored private var turnsCache: (version: Int, turns: [Turn])?
+    /// Lines already searched for the reader's names, and what was found; see `forMe`.
+    @ObservationIgnored var mentionScan: (names: [String], scanned: Int, found: [(id: Int, text: String)]) = ([], 0, [])
     public private(set) var speakerOrder: [SpeakerID] = []
     public private(set) var provisional: Provisional?
     public private(set) var epoch = 0
@@ -160,6 +167,9 @@ public final class Transcript: Identifiable {
     public var tags: [String] = [] { didSet { if tags != oldValue { touch() } } }
     /// The assistant mode the session was held in, last one used.
     public var mode: AssistantMode? { didSet { if mode != oldValue { touch() } } }
+
+    /// Speakers as they were before identification renamed and merged them; nil when nothing to undo.
+    public private(set) var speakerBackup: [Speaker]? { didSet { if speakerBackup != oldValue { touch() } } }
 
     /// The line still growing, per channel; "" is the single stream of the normal modes.
     @ObservationIgnored private var openLines: [String: Int] = [:]
@@ -218,6 +228,7 @@ public final class Transcript: Identifiable {
         answers = s.answers ?? []
         tags = s.tags ?? []
         mode = s.mode.flatMap(AssistantMode.init(rawValue:))
+        speakerBackup = s.speakerBackup
         // Continue numbering Them streams past the saved ones, so new people aren't taken for earlier ones.
         themEpoch = max(themEpoch, speakers.keys.filter { $0.label.hasPrefix(Channel.themPrefix) }.map(\.epoch).max() ?? 0)
     }
@@ -227,7 +238,7 @@ public final class Transcript: Identifiable {
                            speakers: speakerOrder.compactMap { speakers[$0] }, speakerOrder: speakerOrder,
                            epoch: epoch, nextLineID: nextLineID, nextOrdinal: nextOrdinal, nextColor: nextColor,
                            summary: summary, answers: answers.isEmpty ? nil : answers,
-                           tags: tags.isEmpty ? nil : tags, mode: mode?.rawValue)
+                           tags: tags.isEmpty ? nil : tags, mode: mode?.rawValue, speakerBackup: speakerBackup)
     }
 
     /// Stamps the session with the time listening first starts.
@@ -568,6 +579,7 @@ public final class Transcript: Identifiable {
             if o == i { openLines[key] = nil } else if o > i { openLines[key] = o - 1 }
         }
         lines.remove(at: i)
+        mentionScan = ([], 0, [])
         touch()
     }
 
@@ -582,9 +594,80 @@ public final class Transcript: Identifiable {
         touch()
     }
 
+    /// Applies the accepted proposals: speakers given the same person become one, named after them.
+    /// The mic and the far side never merge. What was there before is kept for `undoSpeakerNames()`.
+    /// Returns how many speakers were renamed or merged.
+    @discardableResult
+    public func apply(_ proposals: [SpeakerProposal]) -> Int {
+        let before = speakerOrder.compactMap { speakers[$0] }
+        var groups: [String: [SpeakerProposal]] = [:]
+        var order: [String] = []
+        for p in proposals where speakers[p.id] != nil && speakers[p.id]?.mergedInto == nil {
+            // One person per name and side of the call.
+            let side = Channel(p.id) == .me ? "mic" : "other"
+            let key = p.person.lowercased() + "|" + side
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(p)
+        }
+        var counts: [SpeakerID: Int] = [:]
+        for line in lines { if let id = line.speaker.map(canonical) { counts[id, default: 0] += 1 } }
+        var changed = 0
+        for key in order {
+            guard let group = groups[key], let person = group.first?.person else { continue }
+            // Whoever spoke most keeps their color and place.
+            guard let target = group.max(by: { (counts[$0.id] ?? 0) < (counts[$1.id] ?? 0) })?.id else { continue }
+            for p in group where p.id != target {
+                speakers[p.id]?.mergedInto = target
+                changed += 1
+            }
+            if !(group.first?.isPlaceholder ?? true), speakers[target]?.name != person {
+                speakers[target]?.name = person
+                changed += 1
+            }
+        }
+        guard changed > 0 else { return 0 }
+        // The first backup is the one to go back to, however many passes follow.
+        if speakerBackup == nil { speakerBackup = before }
+        touch()
+        return changed
+    }
+
+    /// Puts speakers back as they were before names were worked out. Speakers who appeared since stay.
+    public func undoSpeakerNames() {
+        guard let backup = speakerBackup else { return }
+        for old in backup where speakers[old.id] != nil { speakers[old.id] = old }
+        // Anyone merged since into a speaker that is itself merged again still resolves through `canonical`.
+        speakerBackup = nil
+        touch()
+    }
+
+    /// Every speaker as the recognizer heard them: no names, nothing merged.
+    public func resetSpeakers() {
+        for id in speakers.keys {
+            speakers[id]?.name = ""
+            speakers[id]?.mergedInto = nil
+        }
+        speakerBackup = nil
+        touch()
+    }
+
+    public var hasSpeakerEdits: Bool {
+        speakers.values.contains { !$0.name.isEmpty || $0.mergedInto != nil }
+    }
+
     // MARK: Views
 
     public var turns: [Turn] {
+        // Read both so a view that only gets the cached value still follows changes.
+        _ = lines.count
+        _ = speakers.count
+        if let cache = turnsCache, cache.version == contentVersion { return cache.turns }
+        let built = buildTurns()
+        turnsCache = (contentVersion, built)
+        return built
+    }
+
+    private func buildTurns() -> [Turn] {
         var result: [Turn] = []
         for line in lines {
             let s = line.speaker.map(canonical)

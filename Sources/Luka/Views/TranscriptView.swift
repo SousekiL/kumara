@@ -238,6 +238,7 @@ struct SessionView: View {
     @State private var position: ScrollPosition
     @State private var following = true
     @State private var speakersShown = false
+    @State private var identifyingSpeakers = false
     @State private var editing = false
     @State private var confirmingDelete = false
     @Environment(\.openWindow) private var openWindow
@@ -387,7 +388,13 @@ struct SessionView: View {
             }
             .help(tr("Speakers"))
             .popover(isPresented: $speakersShown, arrowEdge: .bottom) {
-                SpeakersList().environment(model).environment(\.session, transcript)
+                SpeakersList(identify: {
+                    speakersShown = false
+                    identifyingSpeakers = true
+                }).environment(model).environment(\.session, transcript)
+            }
+            .sheet(isPresented: $identifyingSpeakers) {
+                SpeakerIdentifySheet(transcript: transcript).environment(model)
             }
             Toggle(isOn: $model.transcriptShowsOriginal.animation(.smooth)) {
                 Label(tr("Show Original"), systemImage: "character.bubble")
@@ -880,9 +887,15 @@ struct SpeakersList: View {
     @Environment(AppModel.self) private var model
     @Environment(\.session) private var session
     @State private var editing: SpeakerID?
+    /// Opens the sheet that works out names and merges.
+    var identify: (() -> Void)?
 
     var body: some View {
-        let speakers = (session ?? model.transcript).visibleSpeakers
+        let t = session ?? model.transcript
+        let speakers = t.visibleSpeakers
+        let counts = t.lines.reduce(into: [SpeakerID: Int]()) { counts, line in
+            if let id = line.speaker { counts[t.canonical(id), default: 0] += 1 }
+        }
         VStack(alignment: .leading, spacing: 0) {
             Text(tr("Speakers"))
                 .font(.headline)
@@ -897,7 +910,7 @@ struct SpeakersList: View {
                 ScrollView {
                     VStack(spacing: 2) {
                         ForEach(speakers) { speaker in
-                            SpeakerRow(speaker: speaker, expanded: editing == speaker.id) {
+                            SpeakerRow(speaker: speaker, lineCount: counts[speaker.id] ?? 0, expanded: editing == speaker.id) {
                                 withAnimation(.smooth) { editing = editing == speaker.id ? nil : speaker.id }
                             }
                         }
@@ -905,6 +918,21 @@ struct SpeakersList: View {
                     .padding(8)
                 }
                 .frame(maxHeight: 380)
+                if let identify {
+                    Divider()
+                    HStack {
+                        Button { identify() } label: { Label(tr("Work Out Who’s Who…"), systemImage: "sparkles") }
+                            .disabled(!model.assistant.isAskConfigured)
+                            .help(model.assistant.isAskConfigured ? tr("Name and merge speakers from what was said") : tr("Pick a model in Settings › Models first"))
+                        Spacer()
+                        if t.speakerBackup != nil {
+                            Button(tr("Undo")) { withAnimation(.smooth) { t.undoSpeakerNames() } }
+                                .help(tr("Put speakers back as they were before the first proposal was applied"))
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                }
             }
         }
         .frame(width: 300)
@@ -915,6 +943,7 @@ private struct SpeakerRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.session) private var session
     let speaker: Speaker
+    var lineCount = 0
     let expanded: Bool
     let toggle: () -> Void
 
@@ -923,10 +952,13 @@ private struct SpeakerRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Circle().fill(SpeakerPalette.color(speaker.colorIndex)).frame(width: 10, height: 10)
-                TextField(String(format: tr("Speaker %d"), speaker.ordinal), text: Binding(
+                TextField(model.speakerName(speaker.id, in: t), text: Binding(
                     get: { speaker.name }, set: { t.rename(speaker.id, to: $0) }))
                     .textFieldStyle(.plain)
                     .font(.body.weight(.medium))
+                // How much each said: tells apart speakers that look alike, and shows stray ones.
+                Text(verbatim: "\(lineCount)").font(.caption).monospacedDigit().foregroundStyle(.tertiary)
+                    .help(tr("Lines spoken"))
                 Button(action: toggle) {
                     Image(systemName: "ellipsis.circle")
                         .foregroundStyle(.secondary)

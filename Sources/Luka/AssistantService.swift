@@ -52,7 +52,7 @@ final class AssistantService {
         language = d.string(forKey: "summary.language") ?? ""
         // 14 pt reads comfortably at arm's length in a side column; 13 is the system's body size.
         fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 14
-        readerNames = d.string(forKey: "assistant.readerNames") ?? "Felix, Weifeng"
+        readerNames = d.string(forKey: "assistant.readerNames") ?? ""
         askUsesOwnModel = d.bool(forKey: "ask.ownModel")
         askProvider = SummaryProvider(rawValue: d.string(forKey: "ask.provider") ?? "") ?? .anthropic
         askBaseURL = d.string(forKey: "ask.baseURL") ?? ""
@@ -114,6 +114,25 @@ final class AssistantService {
     }
 
     private static func key(_ e: SummaryEndpoint) -> String { "\(e.provider.rawValue)|\(e.baseURL)|\(e.model)" }
+
+    /// Runs one request on the deep model, streamed. Models accept different thinking settings,
+    /// so this steps down to the next style when one is rejected, and remembers what worked.
+    func deepStream(system: String, user: String, progress: @MainActor (String) -> Void = { _ in }) async throws -> String {
+        let order = askThinkingOrder
+        let endpoint = askEndpoint
+        for (i, thinking) in order.enumerated() {
+            guard let request = askRequest(system: system, user: user, thinking: thinking) else { throw URLError(.badURL) }
+            do {
+                let reply = try await stream(request, via: endpoint, progress: progress)
+                noteAccepted(thinking)
+                return reply
+            } catch let error where i < order.count - 1 && !Task.isCancelled
+                && SummaryEndpoint.rejectsThinking(error.localizedDescription) {
+                AudioLog.write("deep model: thinking style rejected, trying the next: \(error.localizedDescription)")
+            }
+        }
+        throw SummaryEndpoint.ResponseError.empty
+    }
 
     func askRequest(system: String, user: String, thinking: SummaryEndpoint.Thinking) -> URLRequest? {
         askUsesOwnModel

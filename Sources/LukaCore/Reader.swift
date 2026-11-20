@@ -44,10 +44,23 @@ extension Transcript {
     public func forMe(names: [String], limit: Int = 3) -> [ForMeItem] {
         var items: [ForMeItem] = []
         if !names.isEmpty {
-            let said = lines.filter { Channel($0.speaker) != .me && ReaderNames.mentions($0.original, names: names) }
-            items += said.suffix(limit).map {
-                ForMeItem(kind: .mention, text: $0.original.trimmingCharacters(in: .whitespaces), lineID: $0.id)
+            // Each finished line is searched once; a line still growing is looked at fresh every time.
+            if mentionScan.names != names || mentionScan.scanned > lines.count { mentionScan = (names, 0, []) }
+            var index = mentionScan.scanned
+            while index < lines.count, !lines[index].isOpen {
+                let line = lines[index]
+                if Channel(line.speaker) != .me, ReaderNames.mentions(line.original, names: names) {
+                    mentionScan.found.append((line.id, line.original.trimmingCharacters(in: .whitespaces)))
+                    if mentionScan.found.count > 50 { mentionScan.found.removeFirst(mentionScan.found.count - 50) }
+                }
+                index += 1
             }
+            mentionScan.scanned = index
+            var said = mentionScan.found
+            for line in lines[index...] where Channel(line.speaker) != .me && ReaderNames.mentions(line.original, names: names) {
+                said.append((line.id, line.original.trimmingCharacters(in: .whitespaces)))
+            }
+            items += said.suffix(limit).map { ForMeItem(kind: .mention, text: $0.text, lineID: $0.id) }
         }
         if let notes = summary?.text {
             let mine = notes.split(separator: "\n").map(String.init).filter {

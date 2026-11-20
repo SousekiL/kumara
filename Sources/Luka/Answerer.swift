@@ -313,9 +313,6 @@ final class Answerer {
         let user = AskPrompt.user(question: question, conversation: conversation, notes: t.summary?.text,
                                   knowledge: knowledge.excerpts(for: question), previous: previous)
         let system = AskPrompt.system(language: language, mode: mode, role: role, extra: service.context)
-        let order = service.askThinkingOrder
-        guard service.askRequest(system: system, user: user, thinking: order[0]) != nil else { return }
-        let endpoint = service.askEndpoint
         let start = Live(session: t.id, id: id, question: question, polish: false, asked: true)
         askFailure = nil
         asking = start
@@ -323,22 +320,10 @@ final class Answerer {
         askTask = Task {
             defer { if asking?.id == id { asking = nil } }
             do {
-                // Models accept different thinking settings; step down to the next style when one is rejected.
-                var reply = ""
-                for (i, thinking) in order.enumerated() {
-                    guard let request = service.askRequest(system: system, user: user, thinking: thinking) else { return }
-                    do {
-                        reply = try await service.stream(request, via: endpoint) { [weak self] text in
-                            guard let self, self.asking?.id == id, let shown = AskPrompt.partial(text) else { return }
-                            self.asking?.text = shown.text
-                            self.asking?.source = shown.source
-                        }
-                        service.noteAccepted(thinking)
-                        break
-                    } catch let error where i < order.count - 1 && !Task.isCancelled
-                        && SummaryEndpoint.rejectsThinking(error.localizedDescription) {
-                        AudioLog.write("ask: thinking style rejected, trying the next: \(error.localizedDescription)")
-                    }
+                let reply = try await service.deepStream(system: system, user: user) { [weak self] text in
+                    guard let self, self.asking?.id == id, let shown = AskPrompt.partial(text) else { return }
+                    self.asking?.text = shown.text
+                    self.asking?.source = shown.source
                 }
                 guard !Task.isCancelled, let answer = AskPrompt.parse(reply) else { return }
                 t.answers.append(QuestionAnswer(id: id, question: question, answer: answer.text,

@@ -42,6 +42,7 @@ final class AppModel {
     @ObservationIgnored let client = SonioxStreams()
     /// The model the summary and the answers share, and what else they share.
     let assistant: AssistantService
+    let speakerIdentifier = SpeakerIdentifier()
     /// The live summary.
     let summarizer: Summarizer
     /// Answers to questions heard, from the knowledge base first.

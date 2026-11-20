@@ -266,7 +266,7 @@ struct SummaryPanel: View {
                             freshFrom: model.isLive(transcript) && model.isListening ? summary.freshLine : nil)
             }
         } else if !model.assistant.isConfigured {
-            setupHint(tr("Pick a model for the summary in Settings › Assistant."))
+            setupHint(tr("Pick a model for the summary in Settings › Models."))
         } else if !summarizer.enabled {
             if sessionMode != .interview {
                 EmptyNote(symbol: "text.alignleft", text: tr("The summary is off. Turn it on with the switch above."))
@@ -334,13 +334,14 @@ struct SummaryPanel: View {
             .transition(.opacity)
         }
         let rows = answerRows
+        let askers = askers(of: Set(rows.filter { !$0.polish && !$0.asked }.map(\.id)))
         if !rows.isEmpty {
             // Newest first and at full strength; earlier ones step back.
             let newest = rows.first?.id
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(rows) { row in
                     AnswerCard(row: row, fontSize: model.assistant.fontSize, family: model.fontFamily,
-                               askerColor: row.polish ? .secondary : row.asked ? LukaTheme.accent : model.speakerColor(asker(of: row.id), in: transcript)) {
+                               askerColor: row.polish ? .secondary : row.asked ? LukaTheme.accent : model.speakerColor(askers[row.id], in: transcript)) {
                         copy(row.answer, notice: tr("Copied answer"))
                     }
                     // The newest card carries the accent edge; earlier ones are quieter cards.
@@ -352,7 +353,7 @@ struct SummaryPanel: View {
             }
             .animation(.smooth(duration: 0.25), value: rows.map(\.id))
         } else if !model.assistant.isConfigured {
-            setupHint(tr("Pick a model for the answers in Settings › Assistant."))
+            setupHint(tr("Pick a model for the answers in Settings › Models."))
         } else if !answerer.enabled {
             EmptyNote(symbol: "bubble.left.and.text.bubble.right", text: tr("Answers are off. Turn them on with the switch above."))
         } else {
@@ -378,8 +379,11 @@ struct SummaryPanel: View {
         return rows
     }
 
-    private func asker(of lineID: Int) -> SpeakerID? {
-        transcript.lines.last(where: { $0.id == lineID })?.speaker
+    /// Who asked each answered question, found in one pass over the lines.
+    private func askers(of ids: Set<Int>) -> [Int: SpeakerID] {
+        var out: [Int: SpeakerID] = [:]
+        for line in transcript.lines where ids.contains(line.id) { out[line.id] = line.speaker }
+        return out
     }
 
     static func ago(_ date: Date, now: Date) -> String {
@@ -983,7 +987,7 @@ private struct AskBar: View {
             }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("", text: $draft,
-                          prompt: Text(ready ? tr("Ask about this conversation…") : tr("Pick a model in Settings › Assistant to ask questions")),
+                          prompt: Text(ready ? tr("Ask about this conversation…") : tr("Pick a model in Settings › Models to ask questions")),
                           axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...4)

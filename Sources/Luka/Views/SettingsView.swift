@@ -7,6 +7,7 @@ struct SettingsView: View {
         TabView {
             Tab(tr("General"), systemImage: "gearshape") { GeneralSettings() }
             Tab(tr("Captions"), systemImage: "captions.bubble") { CaptionSettings() }
+            Tab(tr("Models"), systemImage: "cpu") { ModelSettings() }
             Tab(tr("Assistant"), systemImage: "text.badge.star") { SummarySettings() }
             Tab(tr("Knowledge"), systemImage: "books.vertical") { KnowledgeSettings() }
             Tab(tr("Usage"), systemImage: "chart.bar") { UsageSettings() }
@@ -41,15 +42,6 @@ private struct GeneralSettings: View {
                 Toggle(tr("Show in Dock"), isOn: $model.showsInDock)
             } footer: {
                 Text(tr("Kumara keeps running in the menu bar, so ⌃⌥N can start a transcription at any time."))
-            }
-            Section {
-                SecureField(tr("API key"), text: $model.apiKey)
-                LabeledContent(tr("Region")) { KeyStatus() }
-                LabeledContent(tr("Model")) { Text(SessionConfig.model).foregroundStyle(.secondary) }
-            } header: {
-                Text("Soniox")
-            } footer: {
-                Link(tr("Get a key at console.soniox.com"), destination: URL(string: "https://console.soniox.com")!)
             }
             Section {
                 SourcePicker()
@@ -350,7 +342,8 @@ private struct UsageSettings: View {
     }
 }
 
-private struct SummarySettings: View {
+/// The three models Kumara uses, in one place: what each is for and how it is reached.
+private struct ModelSettings: View {
     @Environment(AppModel.self) private var model
 
     /// Common services, so nobody has to look up a base URL. The model name is only a starting point.
@@ -374,9 +367,17 @@ private struct SummarySettings: View {
     var body: some View {
         @Bindable var model = model
         @Bindable var service = model.assistant
-        @Bindable var summarizer = model.summarizer
-        @Bindable var answerer = model.answerer
         Form {
+            Section {
+                SecureField(tr("API key"), text: $model.apiKey)
+                LabeledContent(tr("Region")) { KeyStatus() }
+                LabeledContent(tr("Model")) { Text(SessionConfig.model).foregroundStyle(.secondary) }
+            } header: {
+                Text(tr("Transcription") + " · Soniox")
+            } footer: {
+                Text(tr("Turns speech into text and translates it, live. Everything else builds on its transcript.") + " ")
+                + Text(.init("[\(tr("Get a key at console.soniox.com"))](https://console.soniox.com)"))
+            }
             Section {
                 LabeledContent(tr("Service")) {
                     Menu(tr("Choose a preset")) {
@@ -409,9 +410,9 @@ private struct SummarySettings: View {
                 }
                 .font(.callout)
             } header: {
-                Text(tr("Model"))
+                Text(tr("Live assistant"))
             } footer: {
-                Text(tr("One model, with its own API key, writes both the summary and the answers. A preset fills in the address and a model name to start from."))
+                Text(tr("Writes the live summary, the answers to questions heard, feedback on your answers, and the review after each session. It runs every few seconds while listening, so pick a fast, inexpensive model. A preset fills in the address and a model name to start from."))
             }
 
             // Questions typed in the panel can take a stronger, slower model than the live helpers.
@@ -451,10 +452,26 @@ private struct SummarySettings: View {
                 }
                 Toggle(tr("Think deeply"), isOn: $service.askThinks)
             } header: {
-                Text(tr("Questions you ask"))
+                Text(tr("Deep analysis"))
             } footer: {
-                Text(tr("Type a question at the bottom of the summary column, in the transcript window or the floating card; the answer shows under Answers and draws on this session’s transcript, its notes and your knowledge base. Off: the same model as above. Think deeply turns on extended thinking for Claude and the highest reasoning effort for OpenAI-compatible models; answers take longer. If a model doesn’t accept a setting, it steps down to one it does."))
+                Text(tr("Used when you ask for something and can wait: questions typed in the ask box, and working out who each speaker is. Worth a stronger model. Off: the live assistant’s model does these too. Think deeply turns on extended thinking for Claude and the highest reasoning effort for OpenAI-compatible models; if a model doesn’t accept a setting, it steps down to one it does."))
             }
+        }
+        .formStyle(.grouped)
+        .frame(height: 560)
+    }
+}
+
+private struct SummarySettings: View {
+    @Environment(AppModel.self) private var model
+
+
+    var body: some View {
+        @Bindable var model = model
+        @Bindable var service = model.assistant
+        @Bindable var summarizer = model.summarizer
+        @Bindable var answerer = model.answerer
+        Form {
 
             // The mode sets the scene; every switch it sets stays here to change by hand.
             Section {
@@ -659,7 +676,7 @@ private struct KnowledgeSettings: View {
                 Text(tr("Answers use this first, and the model’s own knowledge only for what it doesn’t cover. Folders are read where they are (Markdown, text, PDF, Word), including subfolders, and reread at the start of every session, so an existing notes or memory folder works as it is. The excerpts that match a question are sent to the model’s provider."))
             }
             Section {
-                TextField(tr("Your names"), text: $service.readerNames, prompt: Text(verbatim: "Felix, Weifeng"))
+                TextField(tr("Your names"), text: $service.readerNames, prompt: Text(verbatim: "Alex, Alexander"))
             } header: {
                 Text(tr("You"))
             } footer: {
