@@ -1,8 +1,8 @@
 import Foundation
 
 /// One speaker's proposed identity, from a model that read the whole session.
-public struct SpeakerProposal: Identifiable, Sendable, Equatable {
-    public enum Confidence: String, Sendable, Comparable {
+public struct SpeakerProposal: Identifiable, Sendable, Equatable, Codable {
+    public enum Confidence: String, Sendable, Comparable, Codable {
         case low, medium, high
         public static func < (a: Self, b: Self) -> Bool { a.rank < b.rank }
         var rank: Int { self == .low ? 0 : self == .medium ? 1 : 2 }
@@ -25,6 +25,19 @@ public struct SpeakerProposal: Identifiable, Sendable, Equatable {
         self.confidence = confidence
         self.why = why
     }
+}
+
+/// What the reader typed about who was in one session, kept with it.
+public struct SpeakerNotes: Sendable, Equatable, Codable {
+    public var count = 0
+    public var names = ""
+    public var notes = ""
+    public init(count: Int = 0, names: String = "", notes: String = "") {
+        self.count = count
+        self.names = names
+        self.notes = notes
+    }
+    public var isEmpty: Bool { count == 0 && names.isEmpty && notes.isEmpty }
 }
 
 /// What the reader knows about who was there.
@@ -68,6 +81,7 @@ public enum SpeakerPrompt {
     - Speech recognition misspells names; use the reader's spelling, or the most plausible one.
     - When you can tell two tags are the same person but not who, give both the same placeholder: "?A", "?B", ….
     - When you cannot tell who a tag is and it matches no other tag, give it its own placeholder.
+    - A tag cannot be split. When one tag clearly holds several people's speech, name whoever speaks most of it, with "low" confidence, and say so in the note.
     - Be honest about confidence: "high" only with a name said aloud that fits, or unmistakable role evidence; "medium" for a good inference; "low" for a guess.
 
     Reply with one JSON object and nothing else:

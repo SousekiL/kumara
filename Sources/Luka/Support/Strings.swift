@@ -661,5 +661,11 @@ enum Strings {
         "Pick a model in Settings › Models first": "请先在 设置 › 模型 里配置模型",
         "Undo": "撤销",
         "Lines spoken": "发言行数",
+        "Working out who’s who…": "正在推断说话人…",
+        "Use All Suggested Names": "采用全部建议的名字",
+        "Same person as another speaker": "与另一位说话人是同一人",
+        "Merge": "合并",
+        "Use": "采用",
+        "Suggest speaker names when I open the speakers list": "打开说话人列表时自动给出名字建议",
     ]
 }

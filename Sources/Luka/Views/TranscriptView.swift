@@ -920,6 +920,21 @@ struct SpeakersList: View {
                 .frame(maxHeight: 380)
                 if let identify {
                     Divider()
+                    let reading = model.speakerIdentifier.workingOn == t.id
+                    let open = speakers.compactMap { t.suggestion(for: $0.id) }
+                    if reading {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text(tr("Working out who’s who…")).font(.callout).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 16).padding(.top, 10)
+                    } else if open.contains(where: { $0.confidence > .low }) {
+                        Button(tr("Use All Suggested Names")) {
+                            withAnimation(.smooth) { _ = t.apply(open.filter { $0.confidence > .low }) }
+                        }
+                        .buttonStyle(.borderless)
+                        .padding(.horizontal, 16).padding(.top, 10)
+                    }
                     HStack {
                         Button { identify() } label: { Label(tr("Work Out Who’s Who…"), systemImage: "sparkles") }
                             .disabled(!model.assistant.isAskConfigured)
@@ -935,7 +950,11 @@ struct SpeakersList: View {
                 }
             }
         }
-        .frame(width: 300)
+        .frame(width: 320)
+        .onAppear {
+            guard identify != nil, model.assistant.isAskConfigured else { return }
+            model.speakerIdentifier.suggestIfNeeded(t, listening: model.isLive(t) && model.status != .idle, service: model.assistant)
+        }
     }
 }
 
@@ -967,6 +986,23 @@ private struct SpeakerRow: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
+            if let p = t.suggestion(for: speaker.id) {
+                // The model's guess at who this is: take it or leave it.
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles").font(.caption).foregroundStyle(LukaTheme.accent)
+                    Text(p.isPlaceholder ? tr("Same person as another speaker") : p.person).fontWeight(.medium)
+                    Text(p.confidence == .high ? tr("Sure") : p.confidence == .medium ? tr("Likely") : tr("Guess"))
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Button(p.isPlaceholder ? tr("Merge") : tr("Use")) { withAnimation(.smooth) { _ = t.acceptSuggestion(for: speaker.id) } }
+                        .buttonStyle(.borderless).foregroundStyle(LukaTheme.accent)
+                    Button { withAnimation(.smooth) { t.dismissSuggestion(for: speaker.id) } } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.borderless).foregroundStyle(.tertiary)
+                }
+                .font(.callout)
+                .help(p.why)
+                .padding(.leading, 30).padding(.trailing, 10).padding(.bottom, 8)
+            }
             if expanded {
                 SpeakerEditor(id: speaker.id)
                     .transition(.opacity.combined(with: .move(edge: .top)))

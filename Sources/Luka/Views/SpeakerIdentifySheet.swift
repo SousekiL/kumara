@@ -8,14 +8,18 @@ struct SpeakerIdentifySheet: View {
     @Environment(\.dismiss) private var dismiss
     let transcript: Transcript
 
-    @AppStorage("speakers.hint.names") private var names = ""
-    @AppStorage("speakers.hint.notes") private var notes = ""
+    // What the reader knows about this session's people; kept with the session, blank for a new one.
+    @State private var names = ""
+    @State private var notes = ""
     @State private var count = 0
     @State private var accepted: Set<SpeakerID> = []
 
     private var identifier: SpeakerIdentifier { model.speakerIdentifier }
     private var result: SpeakerIdentifier.Result? {
-        identifier.result.flatMap { $0.session == transcript.id ? $0 : nil }
+        if let fresh = identifier.result, fresh.session == transcript.id { return fresh }
+        // Proposals from an earlier pass that are still open.
+        let open = transcript.speakerSuggestions.filter { transcript.suggestion(for: $0.id) != nil }
+        return open.isEmpty ? nil : .init(session: transcript.id, proposals: open, note: "")
     }
 
     var body: some View {
@@ -74,7 +78,7 @@ struct SpeakerIdentifySheet: View {
                 .menuIndicator(.hidden).fixedSize()
                 .help(tr("Reset Every Speaker: no names, nothing merged, as first transcribed"))
                 Spacer()
-                if identifier.working {
+                if identifier.workingOn == transcript.id {
                     ProgressView().controlSize(.small)
                     Text(tr("Reading the session…")).foregroundStyle(.secondary)
                 }
@@ -94,10 +98,26 @@ struct SpeakerIdentifySheet: View {
             // Anything better than a guess starts accepted.
             accepted = Set((proposals ?? []).filter { $0.confidence > .low }.map(\.id))
         }
-        .onDisappear { identifier.clear() }
+        .onAppear {
+            count = transcript.speakerNotes.count
+            names = transcript.speakerNotes.names
+            notes = transcript.speakerNotes.notes
+            if result == nil, !transcript.speakerSuggestions.isEmpty {
+                accepted = Set(transcript.speakerSuggestions.filter { $0.confidence > .low }.map(\.id))
+            }
+        }
+        .onDisappear {
+            keepNotes()
+            identifier.clear()
+        }
+    }
+
+    private func keepNotes() {
+        transcript.speakerNotes = SpeakerNotes(count: count, names: names, notes: notes)
     }
 
     private func run() {
+        keepNotes()
         let hints = SpeakerHints(count: count, names: SpeakerHints.parseNames(names), notes: notes, reader: model.assistant.names)
         identifier.identify(transcript, hints: hints, service: model.assistant)
     }

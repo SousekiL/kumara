@@ -451,6 +451,7 @@ private struct ModelSettings: View {
                     .font(.callout)
                 }
                 Toggle(tr("Think deeply"), isOn: $service.askThinks)
+                Toggle(tr("Suggest speaker names when I open the speakers list"), isOn: Bindable(model.speakerIdentifier).suggestsAutomatically)
             } header: {
                 Text(tr("Deep analysis"))
             } footer: {

@@ -874,5 +874,15 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         call.apply(both.map { .init(id: $0, tag: "S", person: "Felix", confidence: .high, why: "") })
         #expect(call.visibleSpeakers.count == 2)
         #expect(SpeakerHints.parseNames("Irene，Roy; Preethi\nFelix") == ["Irene", "Roy", "Preethi", "Felix"])
+
+        let s = session()
+        let three = s.visibleSpeakers.map(\.id)
+        s.speakerSuggestions = [.init(id: three[0], tag: "S1", person: "Irene", confidence: .high, why: ""),
+                                .init(id: three[1], tag: "S2", person: "?A", confidence: .low, why: ""),
+                                .init(id: three[2], tag: "S3", person: "Irene", confidence: .medium, why: "")]
+        #expect(s.suggestion(for: three[1]) == nil && s.suggestion(for: three[0])?.person == "Irene")
+        s.acceptSuggestion(for: three[0])
+        #expect(s.visibleSpeakers.count == 2 && s.speakerSuggestions.count == 1)
+        #expect(Transcript(snapshot: s.snapshot).speakerSuggestions.count == 1)
     }
 }

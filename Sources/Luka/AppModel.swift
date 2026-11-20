@@ -424,6 +424,7 @@ final class AppModel {
         answerer.onEnabledChange = { [weak self] in self?.answersChanged() }
         watchSystemTheme()
         answerer.onAsked = { [weak self] t in self?.store.save(t) }
+        speakerIdentifier.onResult = { [weak self] t in self?.store.save(t) }
         answerer.onAnswer = { [weak self] in
             guard let self else { return }
             // A fresh answer is what the reader wants to see next.

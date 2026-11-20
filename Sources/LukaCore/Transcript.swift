@@ -133,6 +133,12 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var mode: String? = nil
     /// Speakers as they were before names were worked out, to go back to.
     public var speakerBackup: [Speaker]? = nil
+    /// Names proposed for speakers and not yet taken up.
+    public var speakerSuggestions: [SpeakerProposal]? = nil
+    /// What the reader said about who was there.
+    public var speakerNotes: SpeakerNotes? = nil
+    /// How many lines the session had when names were last proposed.
+    public var speakerSuggestedLines: Int? = nil
 }
 
 @MainActor
@@ -170,6 +176,34 @@ public final class Transcript: Identifiable {
 
     /// Speakers as they were before identification renamed and merged them; nil when nothing to undo.
     public private(set) var speakerBackup: [Speaker]? { didSet { if speakerBackup != oldValue { touch() } } }
+
+    /// Names proposed for speakers, waiting for the reader to take them or not.
+    public var speakerSuggestions: [SpeakerProposal] = [] { didSet { if speakerSuggestions != oldValue { touch() } } }
+    public var speakerNotes = SpeakerNotes() { didSet { if speakerNotes != oldValue { touch() } } }
+    public var speakerSuggestedLines: Int? { didSet { if speakerSuggestedLines != oldValue { touch() } } }
+
+    /// The proposal still open for a speaker: not yet their name.
+    public func suggestion(for id: SpeakerID) -> SpeakerProposal? {
+        guard let s = speakers[id], s.mergedInto == nil,
+              let p = speakerSuggestions.first(where: { $0.id == id }) else { return nil }
+        if p.isPlaceholder {
+            // Only worth showing when someone else shares it.
+            let others = speakerSuggestions.filter { $0.person == p.person && $0.id != id && speakers[$0.id]?.mergedInto == nil }
+            return others.isEmpty ? nil : p
+        }
+        return s.name == p.person ? nil : p
+    }
+
+    /// Takes up one suggestion, together with every other speaker proposed as the same person.
+    @discardableResult
+    public func acceptSuggestion(for id: SpeakerID) -> Int {
+        guard let p = suggestion(for: id) else { return 0 }
+        return apply(speakerSuggestions.filter { $0.person.lowercased() == p.person.lowercased() })
+    }
+
+    public func dismissSuggestion(for id: SpeakerID) {
+        speakerSuggestions.removeAll { $0.id == id }
+    }
 
     /// The line still growing, per channel; "" is the single stream of the normal modes.
     @ObservationIgnored private var openLines: [String: Int] = [:]
@@ -229,6 +263,9 @@ public final class Transcript: Identifiable {
         tags = s.tags ?? []
         mode = s.mode.flatMap(AssistantMode.init(rawValue:))
         speakerBackup = s.speakerBackup
+        speakerSuggestions = s.speakerSuggestions ?? []
+        speakerNotes = s.speakerNotes ?? SpeakerNotes()
+        speakerSuggestedLines = s.speakerSuggestedLines
         // Continue numbering Them streams past the saved ones, so new people aren't taken for earlier ones.
         themEpoch = max(themEpoch, speakers.keys.filter { $0.label.hasPrefix(Channel.themPrefix) }.map(\.epoch).max() ?? 0)
     }
@@ -238,7 +275,9 @@ public final class Transcript: Identifiable {
                            speakers: speakerOrder.compactMap { speakers[$0] }, speakerOrder: speakerOrder,
                            epoch: epoch, nextLineID: nextLineID, nextOrdinal: nextOrdinal, nextColor: nextColor,
                            summary: summary, answers: answers.isEmpty ? nil : answers,
-                           tags: tags.isEmpty ? nil : tags, mode: mode?.rawValue, speakerBackup: speakerBackup)
+                           tags: tags.isEmpty ? nil : tags, mode: mode?.rawValue, speakerBackup: speakerBackup,
+                           speakerSuggestions: speakerSuggestions.isEmpty ? nil : speakerSuggestions,
+                           speakerNotes: speakerNotes.isEmpty ? nil : speakerNotes, speakerSuggestedLines: speakerSuggestedLines)
     }
 
     /// Stamps the session with the time listening first starts.
@@ -625,6 +664,9 @@ public final class Transcript: Identifiable {
                 changed += 1
             }
         }
+        // Taken up or not needed any more either way.
+        let used = Set(proposals.map(\.id))
+        speakerSuggestions.removeAll { used.contains($0.id) }
         guard changed > 0 else { return 0 }
         // The first backup is the one to go back to, however many passes follow.
         if speakerBackup == nil { speakerBackup = before }
