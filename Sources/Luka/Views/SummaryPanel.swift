@@ -362,7 +362,11 @@ struct SummaryPanel: View {
     /// The session's answers, newest first, led by the one being written.
     private var answerRows: [AnswerRow] {
         // A polish with nothing to fix only feeds the question tracker.
-        var rows = transcript.answers.reversed().filter { !($0.kind == "polish" && $0.answer.isEmpty) }.map(AnswerRow.init)
+        let slips = transcript.slips
+        var rows = transcript.answers.reversed().filter { !($0.kind == "polish" && $0.answer.isEmpty) }.map { item in
+            // The newest few: a card is for the question first.
+            AnswerRow(item, slips: item.kind == "polish" || item.kind == "asked" ? [] : Array((slips[item.id] ?? []).suffix(3)))
+        }
         // A polish shows only once it has a fix; most of its reply is for the tracker and the review.
         // A heard question shows only once the model commits to answering it: until then it may
         // still judge that it needs none, and a card that appears and vanishes is just noise.
@@ -610,8 +614,11 @@ struct AnswerRow: Identifiable {
     let source: String?
     let restated: String?
     let createdAt: Date?
+    /// My language slips while answering this question.
+    var slips: [String] = []
 
-    init(_ item: QuestionAnswer) {
+    init(_ item: QuestionAnswer, slips: [String] = []) {
+        self.slips = slips
         id = item.id
         question = item.question
         answer = item.answer
@@ -675,6 +682,18 @@ private struct AnswerCard: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+            }
+            if !row.slips.isEmpty {
+                // Small and grey, under the answer: a reminder, not something to compete with it.
+                VStack(alignment: .leading, spacing: fontSize * 0.25) {
+                    ForEach(row.slips, id: \.self) { slip in
+                        Label(slip, systemImage: "textformat.abc")
+                    }
+                }
+                .font(LukaFont.font(family, size: max(11, fontSize - 2)))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(tr("Your wording: what you said → what to say"))
             }
             footer
         }
