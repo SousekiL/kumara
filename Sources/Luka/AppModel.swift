@@ -515,6 +515,8 @@ final class AppModel {
         audio.stop()
         level = 0
         guard client.isOpen else {
+            // Nothing open, but a stream may be about to reconnect: call that off.
+            client.disconnect()
             status = .idle
             return
         }

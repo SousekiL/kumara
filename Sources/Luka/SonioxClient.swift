@@ -34,6 +34,18 @@ final class SonioxClient {
     private var attempts = 0
     private var lastAudio = Date.distantPast
     private var keepalive: Timer?
+    /// Waiting to open a replacement stream after a drop.
+    private var reconnecting = false
+    /// Audio no stream has taken yet: what came in while reconnecting, and since, until the new stream
+    /// is up. Sent first on each stream that is opened, so a retry that fails too loses nothing.
+    private var pending: [Data] = []
+    private var pendingBytes = 0
+    /// 16 kHz, 16-bit mono.
+    private static let bytesPerMs = 32
+    /// Half a minute: longer than every retry takes together. Past it, the oldest audio goes.
+    private static let maxPendingBytes = bytesPerMs * 30_000
+    /// The stream now open has accepted its settings, so audio sent to it needs no keeping.
+    private var confirmed = false
 
     var isOpen: Bool { task != nil }
 
@@ -55,14 +67,24 @@ final class SonioxClient {
         let gen = generation
         let task = URLSession.shared.webSocketTask(with: endpoint)
         self.task = task
-        baseMs = clock()
+        // Audio held back during a reconnect began that much earlier on the clock.
+        baseMs = clock() - pendingBytes / Self.bytesPerMs
+        reconnecting = false
+        confirmed = false
         task.resume()
         task.send(.string(config.json(apiKey: apiKey, carryover: carryover, lane: lane))) { [weak self] error in
             Task { @MainActor in
                 guard let self, gen == self.generation else { return }
-                if let error { self.dropped(error) } else { self.onEvent(.connected) }
+                if let error {
+                    self.dropped(error)
+                } else {
+                    self.confirmed = true
+                    self.dropPending()
+                    self.onEvent(.connected)
+                }
             }
         }
+        for audio in pending { task.send(.data(audio)) { _ in } }
         receive(task, gen: gen)
         keepalive = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.sendKeepaliveIfIdle() }
@@ -112,6 +134,7 @@ final class SonioxClient {
         }
         attempts += 1
         closeSocket()
+        reconnecting = true
         onEvent(.reconnecting(attempt: attempts))
         let delay = min(8.0, pow(2.0, Double(attempts - 1)))
         let gen = generation
@@ -121,16 +144,41 @@ final class SonioxClient {
         }
     }
 
+    private func dropPending() {
+        pending.removeAll()
+        pendingBytes = 0
+    }
+
     private func fail(_ error: SonioxError) {
         config = nil
+        reconnecting = false
+        dropPending()
         closeSocket()
         onEvent(.failed(error))
     }
 
-    func send(audio: Data) {
-        guard let task else { return }
+    /// Whether the audio was taken: sent, or held for the stream being reopened.
+    @discardableResult
+    func send(audio: Data) -> Bool {
+        guard let task else {
+            guard reconnecting else { return false }
+            hold(audio)
+            return true
+        }
+        // Until the stream is up it may still fail: keep a copy for the next one.
+        if !confirmed { hold(audio) }
         lastAudio = .now
         task.send(.data(audio)) { _ in }
+        return true
+    }
+
+    private func hold(_ audio: Data) {
+        pending.append(audio)
+        pendingBytes += audio.count
+        while pendingBytes > Self.maxPendingBytes, let oldest = pending.first {
+            pendingBytes -= oldest.count
+            pending.removeFirst()
+        }
     }
 
     /// Flush pending words as final without ending the stream.
@@ -143,8 +191,11 @@ final class SonioxClient {
         task.send(.string(#"{"type":"keepalive"}"#)) { _ in }
     }
 
+    /// Also ends a reconnect that is waiting to happen.
     func disconnect() {
         config = nil
+        reconnecting = false
+        dropPending()
         if let task {
             task.send(.string("")) { _ in }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { task.cancel(with: .normalClosure, reason: nil) }
@@ -228,8 +279,7 @@ final class SonioxStreams {
     }
 
     private func send(_ audio: Data, ms: Int, to client: SonioxClient) {
-        guard client.isOpen else { return }
-        client.send(audio: audio)
+        guard client.send(audio: audio) else { return }
         onUsage(ms, translates.indices.contains(client.lane) ? translates[client.lane] : true)
     }
 
@@ -237,7 +287,8 @@ final class SonioxStreams {
         for client in clients.prefix(active) { client.finalize() }
     }
 
+    /// Every stream, open or not: one waiting to reconnect would otherwise open again later and stay open.
     func disconnect() {
-        for client in clients where client.isOpen { client.disconnect() }
+        for client in clients { client.disconnect() }
     }
 }
