@@ -488,6 +488,17 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
                      QuestionAnswer(id: 3, question: "said", answer: "Next: x", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["a → b"]),
                      QuestionAnswer(id: 4, question: "Q2?", answer: "A", fromKnowledge: false, createdAt: .now)]
         #expect(t.slips == [1: ["datas → data", "a → b"]])
+        // An answer to a question that got no card isn't put under the card before it.
+        let s = Transcript()
+        s.ingest(tokens([("Tell me about a project you led.", true, nil), ("<end>", true, nil)]), channel: .them)
+        s.ingest(tokens([("I led the pricing model project.", true, nil), ("<end>", true, nil)]), channel: .me)
+        s.ingest(tokens([("Can you hear me okay?", true, nil), ("<end>", true, nil)]), channel: .them)
+        s.ingest(tokens([("Yes I hear you very clear.", true, nil), ("<end>", true, nil)]), channel: .me)
+        let ids = s.lines.map(\.id)
+        s.answers = [QuestionAnswer(id: ids[0], question: "Q", answer: "A", fromKnowledge: false, createdAt: .now),
+                     QuestionAnswer(id: ids[1], question: "said", answer: "", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["leaded → led"]),
+                     QuestionAnswer(id: ids[3], question: "said", answer: "", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["very clear → very clearly"])]
+        #expect(s.slips == [ids[0]: ["leaded → led"]])
         #expect(PolishPrompt.parse("STATUS: complete\nUSED: -\nFIX: -\nWORDS: -\nBETTER: Fine.")?.words == [])
         // An old-style reply still shows as a fix.
         #expect(PolishPrompt.parse("I led the pricing project.\n- like → (drop)")?.fix?.hasPrefix("I led") == true)

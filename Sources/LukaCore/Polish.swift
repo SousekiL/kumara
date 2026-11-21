@@ -130,14 +130,18 @@ public struct QuestionLogEntry: Equatable, Sendable, Identifiable {
 extension Transcript {
     /// The interviewer's questions in order, each with how my answer went: a polish belongs to the
     /// question answered last before it. Built from the answers already made, with no extra request.
-    /// My language slips for each heard question, by the question's line: those found in the answers
-    /// I gave before the next question, newest last. They sit under the question's card, never in one of their own.
+    /// My language slips for each heard question, by the question's line, newest last. They sit under
+    /// the question's card, never in one of their own. An answer I gave to a question that got no card
+    /// (one judged to need no answer) has no card to sit under, so its slips aren't shown.
     public var slips: [Int: [String]] {
+        let cards = answers.filter { $0.kind != "polish" && $0.kind != "asked" }.map(\.id).sorted()
         var out: [Int: [String]] = [:]
-        var question: Int?
-        for item in answers where item.kind != "asked" {
-            if item.kind != "polish" { question = item.id }
-            else if let question, let words = item.words { out[question, default: []] += words }
+        for item in answers where item.kind == "polish" {
+            // A polish carries the line my answer ended on: the card is the last question before it.
+            guard let words = item.words, let card = cards.last(where: { $0 < item.id }) else { continue }
+            let between = lines.filter { $0.id > card && $0.id < item.id && Channel($0.speaker) == .them }
+            if between.contains(where: { AnswerEagerness.eager.accepts($0.original, fromThem: true) }) { continue }
+            out[card, default: []] += words
         }
         return out
     }
