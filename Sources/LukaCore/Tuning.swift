@@ -56,7 +56,6 @@ public struct AnswerTuning: Codable, Sendable, Equatable {
 
     /// Whether a finished line goes to the model as a possible question.
     public func accepts(_ text: String, fromThem: Bool, eagerness: AnswerEagerness) -> Bool {
-        if eagerness == .off { return false }
         let weight = SummaryPrompt.weight(text)
         if fromThem, weight < floor { return false }
         if fromThem, matchesCue(text) { return true }

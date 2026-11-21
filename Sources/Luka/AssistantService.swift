@@ -29,6 +29,11 @@ final class AssistantService {
             .filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
+    /// What the prompts about one session add: the standing context, then what the reader wrote about that session.
+    func context(for t: Transcript, limit: Int = SessionBackground.limit) -> String {
+        SessionBackground.extra(standing: context, background: t.background, limit: limit)
+    }
+
     private(set) var testResult: String?
     private(set) var testing = false
 
@@ -81,8 +86,8 @@ final class AssistantService {
             && endpoint.url != nil
     }
 
-    func request(system: String, user: String, maxTokens: Int, stream: Bool = false) -> URLRequest? {
-        endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: maxTokens, stream: stream)
+    func request(system: String, user: String, shared: String = "", maxTokens: Int, stream: Bool = false) -> URLRequest? {
+        endpoint.request(apiKey: apiKey, system: system, user: user, shared: shared, maxTokens: maxTokens, stream: stream)
     }
 
     /// The model for questions the reader asks: its own when set, otherwise the shared one.
@@ -117,11 +122,12 @@ final class AssistantService {
 
     /// Runs one request on the deep model, streamed. Models accept different thinking settings,
     /// so this steps down to the next style when one is rejected, and remembers what worked.
-    func deepStream(system: String, user: String, progress: @MainActor (String) -> Void = { _ in }) async throws -> String {
+    func deepStream(system: String, user: String, effort: SummaryEndpoint.Effort = .medium,
+                    progress: @MainActor (String) -> Void = { _ in }) async throws -> String {
         let order = askThinkingOrder
         let endpoint = askEndpoint
         for (i, thinking) in order.enumerated() {
-            guard let request = askRequest(system: system, user: user, thinking: thinking) else { throw URLError(.badURL) }
+            guard let request = askRequest(system: system, user: user, thinking: thinking, effort: effort) else { throw URLError(.badURL) }
             do {
                 let reply = try await stream(request, via: endpoint, progress: progress)
                 noteAccepted(thinking)
@@ -134,10 +140,11 @@ final class AssistantService {
         throw SummaryEndpoint.ResponseError.empty
     }
 
-    func askRequest(system: String, user: String, thinking: SummaryEndpoint.Thinking) -> URLRequest? {
-        askUsesOwnModel
-            ? askEndpoint.request(apiKey: askAPIKey, system: system, user: user, maxTokens: 6_000, stream: true, thinking: thinking)
-            : endpoint.request(apiKey: apiKey, system: system, user: user, maxTokens: 6_000, stream: true, thinking: thinking)
+    func askRequest(system: String, user: String, thinking: SummaryEndpoint.Thinking,
+                    effort: SummaryEndpoint.Effort = .medium) -> URLRequest? {
+        (askUsesOwnModel ? askEndpoint : endpoint)
+            .request(apiKey: askUsesOwnModel ? askAPIKey : apiKey, system: system, user: user, maxTokens: 6_000, stream: true,
+                     thinking: thinking, effort: effort)
     }
 
     // MARK: Sending

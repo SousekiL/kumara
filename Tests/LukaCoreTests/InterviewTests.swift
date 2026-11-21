@@ -170,7 +170,17 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let claude = try #require(SummaryEndpoint(provider: .anthropic, baseURL: "", model: "claude").request(apiKey: "k", system: "s", user: "u"))
         #expect(claude.value(forHTTPHeaderField: "x-api-key") == "k")
         let cbody = try #require(JSONSerialization.jsonObject(with: claude.httpBody!) as? [String: Any])
-        #expect(cbody["system"] as? String == "s")
+        // The system prompt is marked for caching; so is text shared from one request to the next.
+        let system = try #require((cbody["system"] as? [[String: Any]])?.first)
+        #expect(system["text"] as? String == "s" && system["cache_control"] != nil)
+        #expect(((cbody["messages"] as? [[String: Any]])?.first?["content"] as? [[String: Any]])?.count == 1)
+        let kb = try #require(SummaryEndpoint(provider: .anthropic, baseURL: "", model: "claude").request(apiKey: "k", system: "s", user: "u", shared: "kb"))
+        let content = try #require(((try JSONSerialization.jsonObject(with: kb.httpBody!) as? [String: Any])?["messages"] as? [[String: Any]])?.first?["content"] as? [[String: Any]])
+        #expect(content.map { $0["text"] as? String } == ["kb", "u"])
+        #expect(content[0]["cache_control"] != nil && content[1]["cache_control"] == nil)
+        let plain = try #require(SummaryEndpoint(provider: .openAI, baseURL: "", model: "gpt").request(apiKey: "k", system: "s", user: "u", shared: "kb"))
+        let pbody = try #require(JSONSerialization.jsonObject(with: plain.httpBody!) as? [String: Any])
+        #expect((pbody["messages"] as? [[String: String]])?.last?["content"] == "kbu")
         #expect(cbody["max_tokens"] as? Int == 1_500)
     }
 
@@ -375,7 +385,10 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.system(language: "English", mode: .interview).contains("first person"))
         #expect(AnswerPrompt.system(language: "English", mode: .interview, role: "Data Scientist").contains("a Data Scientist position"))
         #expect(AnswerPrompt.system(language: "English", mode: .meeting).contains("When in doubt, SKIP"))
-        #expect(AssistantMode.lecture.eagerness == .off && AssistantMode.meeting.eagerness == .conservative)
+        // A helper turned on by hand works in every mode.
+        #expect(AssistantMode.lecture.eagerness == .conservative && AssistantMode.meeting.eagerness == .conservative)
+        #expect(AssistantMode.transcribe.eagerness == .normal)
+        #expect(AnswerPrompt.system(language: "English", mode: .lecture).contains("This is a talk"))
     }
 }
 
@@ -385,7 +398,6 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
     @Test func lectureAnswersNothing() {
         let t = Transcript()
         t.ingest(tokens([("So why does regression to the mean happen?", true, nil), ("<end>", true, nil)]))
-        #expect(t.waitingQuestion(handled: [], channelsOnly: false, eagerness: .off) == nil)
         #expect(t.waitingQuestion(handled: [], channelsOnly: false, eagerness: .conservative) != nil)
     }
 
@@ -547,10 +559,14 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
     }
 
     @Test func modesSetTheScene() {
-        #expect(AssistantMode.interview.scene.answers && AssistantMode.interview.scene.separatesSpeakers && AssistantMode.interview.scene.pinsQuestions)
-        #expect(!AssistantMode.interview.scene.summary)
-        #expect(AssistantMode.meeting.scene.summary && AssistantMode.meeting.scene.separatesSpeakers && !AssistantMode.meeting.scene.answers)
-        #expect(!AssistantMode.lecture.scene.summary && !AssistantMode.lecture.scene.answers && AssistantMode.lecture.scene.polishes == nil)
+        let off = AssistantMode.Scene(summary: false, answers: false, separatesSpeakers: false, pinsQuestions: false, polishes: nil)
+        #expect(AssistantMode.transcribe.scene == off)
+        var notes = off
+        notes.summary = true
+        #expect(AssistantMode.lecture.scene == notes && AssistantMode.meeting.scene == notes)
+        let interview = AssistantMode.interview.scene
+        #expect(interview.answers && interview.separatesSpeakers && interview.pinsQuestions && interview.polishes == true)
+        #expect(!interview.summary)
     }
 }
 
@@ -610,6 +626,41 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         t.tags = ["面试", "Airwallex"]
         #expect(Transcript(snapshot: t.snapshot).tags == ["面试", "Airwallex"])
         #expect(Transcript().snapshot.tags == nil)
+    }
+}
+
+@Suite struct SessionBackgroundTests {
+    @Test @MainActor func backgroundSurvivesSaving() {
+        let t = Transcript()
+        #expect(t.snapshot.background == nil)
+        t.background = SessionBackground.adding("  和 Irene 的评审会  ", to: t.background)
+        t.background = SessionBackground.adding("待办按负责人列出", to: t.background)
+        t.background = SessionBackground.adding("   ", to: t.background)
+        #expect(t.background == "和 Irene 的评审会\n待办按负责人列出")
+        #expect(Transcript(snapshot: t.snapshot).background == t.background)
+    }
+
+    @Test func backgroundGoesIntoThePrompts() {
+        #expect(SessionBackground.extra(standing: " Felix ", background: " \n") == "Felix")
+        let extra = SessionBackground.extra(standing: "Felix", background: "评审会")
+        #expect(extra.hasPrefix("Felix\n\n"))
+        #expect(extra.contains("<background>\n评审会\n</background>"))
+        #expect(SessionBackground.extra(standing: "", background: "评审会").hasPrefix("About this conversation"))
+        for prompt in [SummaryPrompt.system(language: "Chinese", extra: extra), AnswerPrompt.system(language: "Chinese", extra: extra)] {
+            #expect(prompt.contains("评审会"))
+        }
+        // Too long: the newest lines are kept, whole.
+        let long = (0..<400).map { "line \($0) " + String(repeating: "x", count: 30) }.joined(separator: "\n")
+        let cut = SessionBackground.extra(standing: "", background: long)
+        #expect(cut.count < SessionBackground.limit + 300)
+        #expect(cut.contains("line 399 ") && !cut.contains("line 0 "))
+        #expect(cut.contains("<background>\nline "))
+        // A long paragraph isn't thrown away for the sake of a clean cut.
+        let paragraph = SessionBackground.extra(standing: "", background: String(repeating: "长", count: 7_000) + "\n短")
+        #expect(paragraph.count > SessionBackground.limit)
+        // The notes take less of it.
+        let notes = SessionBackground.extra(standing: "", background: long, limit: SessionBackground.notesLimit)
+        #expect(notes.count < SessionBackground.notesLimit + 300 && notes.contains("line 399 "))
     }
 }
 
@@ -717,17 +768,22 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         let claude = SummaryEndpoint(provider: .anthropic, baseURL: "", model: "m")
         let r = try #require(claude.request(apiKey: "k", system: "s", user: "u", maxTokens: 4_000, stream: true, thinking: .budget))
         let body = try #require(JSONSerialization.jsonObject(with: r.httpBody!) as? [String: Any])
-        #expect((body["thinking"] as? [String: Any])?["budget_tokens"] as? Int == 10_000 && body["max_tokens"] as? Int == 16_000)
+        #expect((body["thinking"] as? [String: Any])?["budget_tokens"] as? Int == 5_000 && body["max_tokens"] as? Int == 16_000)
         let a = try #require(claude.request(apiKey: "k", system: "s", user: "u", thinking: .adaptive))
         let ab = try #require(JSONSerialization.jsonObject(with: a.httpBody!) as? [String: Any])
         #expect((ab["thinking"] as? [String: Any])?["type"] as? String == "adaptive")
-        #expect((ab["output_config"] as? [String: Any])?["effort"] as? String == "high" && ab["budget_tokens"] == nil)
+        #expect((ab["output_config"] as? [String: Any])?["effort"] as? String == "medium" && ab["budget_tokens"] == nil)
+        // Reading a whole session to name the speakers is worth more thinking than a typed question.
+        let deep = try #require(claude.request(apiKey: "k", system: "s", user: "u", thinking: .adaptive, effort: .high))
+        #expect(((try JSONSerialization.jsonObject(with: deep.httpBody!) as? [String: Any])?["output_config"] as? [String: Any])?["effort"] as? String == "high")
+        let old = try #require(claude.request(apiKey: "k", system: "s", user: "u", thinking: .budget, effort: .high))
+        #expect(((try JSONSerialization.jsonObject(with: old.httpBody!) as? [String: Any])?["thinking"] as? [String: Any])?["budget_tokens"] as? Int == 10_000)
         #expect(claude.thinkingFallbacks == [.adaptive, .budget, .none])
         #expect(SummaryEndpoint.rejectsThinking(#""thinking.type.enabled" is not supported for this model."#))
         #expect(!SummaryEndpoint.rejectsThinking("invalid x-api-key"))
         let openAI = SummaryEndpoint(provider: .openAI, baseURL: "", model: "m")
         let o = try #require(openAI.request(apiKey: "k", system: "s", user: "u", thinking: .adaptive))
-        #expect((try JSONSerialization.jsonObject(with: o.httpBody!) as? [String: Any])?["reasoning_effort"] as? String == "high")
+        #expect((try JSONSerialization.jsonObject(with: o.httpBody!) as? [String: Any])?["reasoning_effort"] as? String == "medium")
         let plain = try #require(openAI.request(apiKey: "k", system: "s", user: "u"))
         #expect((try JSONSerialization.jsonObject(with: plain.httpBody!) as? [String: Any])?["reasoning_effort"] == nil)
     }

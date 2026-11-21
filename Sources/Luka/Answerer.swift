@@ -56,10 +56,8 @@ final class Answerer {
             sessionID = nil
             if !enabled { stop() }
             if enabled { reload() }
-            onEnabledChange()
         }
     }
-    @ObservationIgnored var onEnabledChange: () -> Void = {}
     /// The job being interviewed for, which tells Interview mode what counts as a technical question.
     var role: String { didSet { defaults.set(role, forKey: "answers.role") } }
     /// In Interview mode with Me / Them: a smoother version of each of my answers, and quick fixes.
@@ -200,13 +198,17 @@ final class Answerer {
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
         // Only questions the other side asked: my own answers and typed questions aren't repeats to skip.
         let previous = force ? [] : t.answers.filter { $0.kind != "polish" && $0.kind != "asked" }.suffix(3).map(\.shownQuestion)
+        // A knowledge base small enough to send whole is the same every time: it goes first, on its own, to be cached.
+        let whole = knowledge.fitsWhole()
+        let excerpts = knowledge.excerpts(for: question)
         let user = AnswerPrompt.user(question: question, asker: asker.map(name) ?? "someone",
-                                     conversation: conversation, knowledge: knowledge.excerpts(for: question),
+                                     conversation: conversation, knowledge: whole ? "" : excerpts,
                                      previous: previous, force: force)
         let lessons = tuner.tuning(for: mode).lessons
-        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context,
+        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context(for: t),
                                                                         lessons: lessons),
-                                            user: user, maxTokens: 4_000, stream: true) else { return }
+                                            user: user, shared: whole ? AnswerPrompt.knowledgeBlock(excerpts) : "",
+                                            maxTokens: 4_000, stream: true) else { return }
         skipped = nil
         write(request, into: t, live: Live(session: t.id, id: id, question: question, polish: false, committed: force),
               asker: asker)
@@ -225,7 +227,7 @@ final class Answerer {
         handled.formUnion(answer.ids)
         let user = PolishPrompt.user(question: answer.question, answer: answer.text,
                                      knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
-        guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.context),
+        guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.context(for: t)),
                                             user: user, maxTokens: 3_000, stream: true) else { return }
         write(request, into: t, live: Live(session: t.id, id: id, question: answer.text, polish: true), asker: nil)
     }
@@ -312,7 +314,7 @@ final class Answerer {
         let previous = t.answers.filter { $0.kind == "asked" }.suffix(3).map { (question: $0.question, answer: $0.answer) }
         let user = AskPrompt.user(question: question, conversation: conversation, notes: t.summary?.text,
                                   knowledge: knowledge.excerpts(for: question), previous: previous)
-        let system = AskPrompt.system(language: language, mode: mode, role: role, extra: service.context)
+        let system = AskPrompt.system(language: language, mode: mode, role: role, extra: service.context(for: t))
         let start = Live(session: t.id, id: id, question: question, polish: false, asked: true)
         askFailure = nil
         asking = start

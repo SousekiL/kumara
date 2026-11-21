@@ -58,6 +58,8 @@ public struct KnowledgeBase: Sendable {
     public private(set) var chunks: [Chunk] = []
     public var totalCharacters: Int { chunks.reduce(0) { $0 + $1.text.count } }
     public var isEmpty: Bool { chunks.isEmpty }
+    /// Whether `excerpts` hands over all of it, so the text is the same for every question.
+    public func fitsWhole(limit: Int = 12_000) -> Bool { !isEmpty && totalCharacters <= limit }
 
     public init(documents: [(name: String, text: String)] = [], chunkSize: Int = 900) {
         for document in documents {
@@ -222,12 +224,15 @@ public enum AnswerPrompt {
         """
     }
 
+    /// The knowledge base as it opens the user message. Sent on its own when it is the whole base,
+    /// so the service can cache it from one question to the next.
+    public static func knowledgeBlock(_ knowledge: String) -> String {
+        knowledge.isEmpty ? "" : "The reader's knowledge base (excerpts):\n<knowledge>\n\(knowledge)\n</knowledge>\n\n"
+    }
+
     public static func user(question: String, asker: String, conversation: String, knowledge: String, previous: [String] = [],
                             force: Bool = false) -> String {
-        var out = ""
-        if !knowledge.isEmpty {
-            out += "The reader's knowledge base (excerpts):\n<knowledge>\n\(knowledge)\n</knowledge>\n\n"
-        }
+        var out = knowledgeBlock(knowledge)
         if !conversation.isEmpty {
             out += "Recent conversation:\n<conversation>\n\(conversation)\n</conversation>\n\n"
         }
@@ -360,7 +365,7 @@ public enum AskPrompt {
             """
         }
         var prompt = """
-        The reader is in a live \(mode == .interview ? "interview" : mode == .lecture ? "talk or lecture" : "meeting or call") and is asking you a question directly. Answer it.
+        The reader is in a live \(mode == .interview ? "interview" : mode == .lecture ? "talk or lecture" : mode == .meeting ? "meeting or call" : "conversation") and is asking you a question directly. Answer it.
         Use, in this order: what was said in the conversation, the reader's knowledge base, then your own knowledge.
         Start with one line "SOURCE: transcript" when the answer comes from the conversation, "SOURCE: knowledge" when it rests on the knowledge base, or "SOURCE: model" when it is your own knowledge.
         \(format)

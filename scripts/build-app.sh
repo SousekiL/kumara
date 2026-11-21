@@ -47,12 +47,23 @@ build_app() {
     cp -R Resources/*.lproj "$APP/Contents/Resources/"
     cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 
-    if [ -n "$IDENTITY" ]; then
-        codesign --force --options runtime --timestamp --entitlements Resources/Luka.entitlements --sign "$IDENTITY" "$APP"
-        echo "Signed with $IDENTITY"
-    else
-        codesign --force --sign - --timestamp=none --entitlements Resources/Luka.entitlements "$APP"
-    fi
+    # In a folder synced by iCloud, the bundle picks up Finder attributes that signing refuses, and
+    # they come back a moment after being cleared: clear and sign, a few times if need be.
+    local try
+    for try in 1 2 3 4 5; do
+        xattr -cr "$APP"
+        if [ -n "$IDENTITY" ]; then
+            codesign --force --options runtime --timestamp --entitlements Resources/Luka.entitlements --sign "$IDENTITY" "$APP" && break
+        else
+            codesign --force --sign - --timestamp=none --entitlements Resources/Luka.entitlements "$APP" && break
+        fi
+        if [ "$try" = 5 ]; then
+            echo "Signing failed" >&2
+            exit 1
+        fi
+        sleep 1
+    done
+    if [ -n "$IDENTITY" ]; then echo "Signed with $IDENTITY"; fi
 }
 
 make_zip() {

@@ -91,7 +91,8 @@ final class Summarizer {
             user = SummaryPrompt.append(current: t.summary, newTranscript: new.text)
             lastID = new.lastLineID
         }
-        let system = SummaryPrompt.system(language: language, detail: detail, mode: mode, extra: service.context)
+        let extra = service.context(for: t, limit: SessionBackground.notesLimit)
+        let system = SummaryPrompt.system(language: language, detail: detail, mode: mode, extra: extra)
         guard let request = service.request(system: system, user: user, maxTokens: rewrite ? 10_000 : 4_000) else {
             lastError = tr("The summary model’s address isn’t valid.")
             return
@@ -130,7 +131,7 @@ final class Summarizer {
         guard service.isConfigured, !recapping, !t.lines.isEmpty else { return }
         // The last five minutes of talk; when nothing was said in them, the last stretch before.
         let recent = t.recentText(minutes: 5, name: name)
-        guard let request = service.request(system: CatchUpPrompt.system(language: language, extra: service.context),
+        guard let request = service.request(system: CatchUpPrompt.system(language: language, extra: service.context(for: t)),
                                             user: CatchUpPrompt.user(conversation: recent), maxTokens: 3_000) else { return }
         recapping = true
         Task {

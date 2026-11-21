@@ -57,7 +57,7 @@ final class SpeakerIdentifier {
                 workingOn = nil
             }
             do {
-                let reply = try await service.deepStream(system: SpeakerPrompt.system, user: SpeakerPrompt.user(sheet: sheet.text, hints: hints))
+                let reply = try await service.deepStream(system: SpeakerPrompt.system, user: SpeakerPrompt.user(sheet: sheet.text, hints: hints), effort: .high)
                 guard !Task.isCancelled else { return }
                 guard let parsed = SpeakerPrompt.parse(reply, tags: sheet.tags) else {
                     error = tr("The model’s reply couldn’t be read. Try again.")

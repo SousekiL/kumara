@@ -455,7 +455,7 @@ private struct ModelSettings: View {
             } header: {
                 Text(tr("Deep analysis"))
             } footer: {
-                Text(tr("Used when you ask for something and can wait: questions typed in the ask box, and working out who each speaker is. Worth a stronger model. Off: the live assistant’s model does these too. Think deeply turns on extended thinking for Claude and the highest reasoning effort for OpenAI-compatible models; if a model doesn’t accept a setting, it steps down to one it does."))
+                Text(tr("Used when you ask for something and can wait: questions typed in the ask box, and working out who each speaker is. Worth a stronger model. Off: the live assistant’s model does these too. Think deeply turns on thinking at medium effort for Claude and for OpenAI-compatible models; if a model doesn’t accept a setting, it steps down to one it does."))
             }
         }
         .formStyle(.grouped)
