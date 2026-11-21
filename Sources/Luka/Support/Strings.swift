@@ -206,6 +206,7 @@ enum Strings {
         "You said": "你说的",
         "Polish": "润色",
         "Polish my answers": "润色我的回答",
+        "Your wording: what you said → what to say": "你的用词：你说的 → 应该说的",
         "Polish my answers: in Interview mode with Me / Them, after you finish an answer, a smoother way to say it in the language you spoke, plus up to three quick fixes (grammar, natural phrasing, getting back to the question, a closing line, a number to add).": "润色我的回答：在面试模式且开启“我 / 对方”时，你答完一段后，用你说的语言给一个更通顺的说法，再加最多三条快速修改（语法、地道说法、拉回问题、收尾句、可补充的数字）。",
         "Guide (bilingual)": "讲解（双语）",
         "Guide: explanations in the translation language; technical terms, key original wording and anything to say aloud (sample answers, questions to ask) in the spoken language.": "讲解模式：说明用翻译语言；专业术语、关键原话，以及要开口说的内容（示范回答、反问的问题）用对话原本的语言。",

@@ -10,10 +10,11 @@ public enum PolishPrompt {
         var prompt = """
         You coach a candidate during a live job interview for \(job). The candidate ("Me") just finished answering. They will glance at your reply for two seconds between questions, under pressure, so be brief and concrete. The transcript comes from speech recognition: expect broken sentences, restarts, filler and misheard words, and read through them to what the candidate meant.
 
-        Reply with exactly these four lines, nothing else:
+        Reply with exactly these five lines, nothing else:
         STATUS: complete, when the answer covered what was asked, or partial, when it missed part of it.
         USED: the story, project or number the candidate relied on, at most 6 words, or - for none.
-        FIX: the single most useful fix for the candidate's next turn, at most 12 words, or - when nothing is worth fixing. One of: "Add now: …" a line to say right away when the answer missed the question; "wrong → right" for a real grammar or word error or an unnatural phrase; "Next: …" one habit for later answers (lead with the result, cut filler, add a number). The fix in \(notes); words to say stay in the language the candidate spoke.
+        FIX: the single most useful fix for the candidate's next turn, at most 12 words, or - when nothing is worth fixing. One of: "Add now: …" a line to say right away when the answer missed the question; "Next: …" one habit for later answers (lead with the result, cut filler, add a number). The fix in \(notes); words to say stay in the language the candidate spoke.
+        WORDS: the candidate's language slips, at most 2, most useful first, separated by " | ", or - for none. Each is "what they said → what to say", both sides in the language the candidate spoke, at most 10 words: a wrong word, a wrong form or tense, an unnatural phrase, or a word they clearly couldn't find and talked around ("the thing when one class is much bigger → class imbalance"). Only slips the candidate would want to hear about: nothing for filler, restarts or style, and nothing that looks like the recognizer mishearing a correct word.
         BETTER: a smoother version of what the candidate said, for reviewing after the interview: at most 2 short sentences (about 40 words), first person, in the language the candidate spoke. Keep their meaning and facts; add nothing they didn't say, except a number from the knowledge base that is clearly the one they were reaching for.
         No explanations, no praise.
 
@@ -42,12 +43,20 @@ public enum PolishPrompt {
         public var fix: String?
         /// A smoother version, kept for the review afterwards.
         public var better: String?
+        /// Language slips, each "what I said → what to say": shown under the question they answered.
+        public var words: [String] = []
     }
 
     /// The fix as far as it has come in; nil until there is one to show.
     public static func partial(_ reply: String) -> String? {
         guard let fix = fields(SummaryPrompt.clean(reply))["FIX"], !fix.isEmpty, fix != "-", !AnswerPrompt.maySkip(fix) else { return nil }
         return fix
+    }
+
+    /// The slips on a WORDS line: separated by "|", none for "-".
+    static func words(_ value: String?) -> [String] {
+        (value ?? "").split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && $0 != "-" && $0 != "—" }
     }
 
     /// The feedback, or nil when the model skipped. A reply in no known format counts as a fix, as before.
@@ -63,12 +72,12 @@ public enum PolishPrompt {
         }
         let status = value("STATUS")?.lowercased()
         return Feedback(status: status.map { $0.hasPrefix("partial") ? "partial" : "complete" },
-                        used: value("USED"), fix: value("FIX"), better: value("BETTER"))
+                        used: value("USED"), fix: value("FIX"), better: value("BETTER"), words: words(f["WORDS"]))
     }
 
     /// "KEY: value" lines; a value can run on to the following lines until the next key.
     static func fields(_ text: String) -> [String: String] {
-        let keys = ["STATUS", "USED", "FIX", "BETTER"]
+        let keys = ["STATUS", "USED", "FIX", "WORDS", "BETTER"]
         var out: [String: String] = [:]
         var current: String?
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -121,6 +130,18 @@ public struct QuestionLogEntry: Equatable, Sendable, Identifiable {
 extension Transcript {
     /// The interviewer's questions in order, each with how my answer went: a polish belongs to the
     /// question answered last before it. Built from the answers already made, with no extra request.
+    /// My language slips for each heard question, by the question's line: those found in the answers
+    /// I gave before the next question, newest last. They sit under the question's card, never in one of their own.
+    public var slips: [Int: [String]] {
+        var out: [Int: [String]] = [:]
+        var question: Int?
+        for item in answers where item.kind != "asked" {
+            if item.kind != "polish" { question = item.id }
+            else if let question, let words = item.words { out[question, default: []] += words }
+        }
+        return out
+    }
+
     public var questionLog: [QuestionLogEntry] {
         var log: [QuestionLogEntry] = []
         for item in answers {

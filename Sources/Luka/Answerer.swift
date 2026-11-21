@@ -274,7 +274,8 @@ final class Answerer {
                     guard let feedback = PolishPrompt.parse(reply) else { return }
                     item = QuestionAnswer(id: start.id, question: start.question, answer: feedback.fix ?? "",
                                           fromKnowledge: false, createdAt: .now, kind: "polish",
-                                          status: feedback.status, used: feedback.used, better: feedback.better)
+                                          status: feedback.status, used: feedback.used, better: feedback.better,
+                                          words: feedback.words.isEmpty ? nil : feedback.words)
                 } else {
                     guard let answer = AnswerPrompt.parse(reply) else {
                         // Judged not to need an answer: say so, and offer to answer anyway.

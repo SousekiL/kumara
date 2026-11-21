@@ -23,10 +23,12 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
     /// The question restated so it stands on its own, with the premise it refers to ("when you and a
     /// colleague disagreed on the design, how did you handle it?" rather than "how did you handle it?").
     public var restated: String?
+    /// For a polish: my language slips, each "what I said → what to say".
+    public var words: [String]?
 
     public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date, kind: String? = nil,
                 status: String? = nil, used: String? = nil, better: String? = nil, source: String? = nil,
-                restated: String? = nil) {
+                restated: String? = nil, words: [String]? = nil) {
         self.id = id
         self.question = question
         self.answer = answer
@@ -38,6 +40,7 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
         self.better = better
         self.source = source
         self.restated = restated
+        self.words = words
     }
 
     /// The question as shown: restated when the model gave one, otherwise its last sentence.
