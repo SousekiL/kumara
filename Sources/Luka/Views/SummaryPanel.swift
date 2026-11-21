@@ -972,9 +972,15 @@ private struct AskBar: View {
     let transcript: Transcript
     @State private var draft = ""
     @FocusState private var focused: Bool
+    /// The background editor is open.
+    @State private var editingBackground = false
+    /// When the draft was last filed as background, for the note that says so.
+    @State private var filedAt: Date?
 
     var body: some View {
+        @Bindable var transcript = transcript
         let ready = model.assistant.isAskConfigured
+        let hasBackground = SessionBackground.isWritten(transcript.background)
         let busy = model.answerer.asking?.session == transcript.id
         let failure = model.answerer.askFailure.flatMap { $0.session == transcript.id ? $0 : nil }
         VStack(spacing: 0) {
@@ -984,8 +990,36 @@ private struct AskBar: View {
                     .font(.caption).foregroundStyle(.red).lineLimit(2).help(failure.error)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, SummaryPanel.inset).padding(.top, 8)
+            } else if filedAt != nil {
+                Text(tr("Added to this conversation’s background"))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, SummaryPanel.inset).padding(.top, 8)
             }
             HStack(alignment: .bottom, spacing: 8) {
+                Button { editingBackground = true } label: {
+                    Image(systemName: hasBackground ? "doc.text.fill" : "doc.text")
+                        .font(.system(size: 14))
+                        .foregroundStyle(hasBackground ? AnyShapeStyle(LukaTheme.accent) : AnyShapeStyle(.secondary))
+                }
+                .buttonStyle(.plain)
+                .frame(width: 22, height: 22)
+                .help(tr("Background for this conversation") + "  ·  " + tr("⌘↩ adds what you typed"))
+                .popover(isPresented: $editingBackground, arrowEdge: .top) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tr("Background for this conversation")).font(.headline)
+                        Text(tr("Who’s there, what it’s about, what you want from the notes. Used for this conversation’s notes, answers and questions."))
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        TextEditor(text: $transcript.background)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .padding(6)
+                            .background(Color.primary.opacity(0.06), in: .rect(cornerRadius: 8, style: .continuous))
+                            .frame(height: 170)
+                    }
+                    .padding(14)
+                    .frame(width: 340)
+                }
                 TextField("", text: $draft,
                           prompt: Text(ready ? tr("Ask about this conversation…") : tr("Pick a model in Settings › Models to ask questions")),
                           axis: .vertical)
@@ -994,6 +1028,11 @@ private struct AskBar: View {
                     .focused($focused)
                     .disabled(!ready)
                     .onSubmit(send)
+                    .onKeyPress(keys: [.return], phases: .down) { press in
+                        guard press.modifiers.contains(.command) else { return .ignored }
+                        file()
+                        return .handled
+                    }
                     .onKeyPress(.escape) {
                         guard !draft.isEmpty else { return .ignored }
                         draft = ""
@@ -1043,6 +1082,20 @@ private struct AskBar: View {
         guard canSend else { return }
         model.ask(draft, in: transcript)
         draft = ""
+    }
+
+    /// Keeps what was typed as background for this session instead of asking it.
+    private func file() {
+        let added = SessionBackground.adding(draft, to: transcript.background)
+        guard added != transcript.background else { return }
+        transcript.background = added
+        draft = ""
+        let stamp = Date.now
+        filedAt = stamp
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            if filedAt == stamp { filedAt = nil }
+        }
     }
 }
 

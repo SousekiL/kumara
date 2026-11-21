@@ -613,6 +613,41 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
     }
 }
 
+@Suite struct SessionBackgroundTests {
+    @Test @MainActor func backgroundSurvivesSaving() {
+        let t = Transcript()
+        #expect(t.snapshot.background == nil)
+        t.background = SessionBackground.adding("  和 Irene 的评审会  ", to: t.background)
+        t.background = SessionBackground.adding("待办按负责人列出", to: t.background)
+        t.background = SessionBackground.adding("   ", to: t.background)
+        #expect(t.background == "和 Irene 的评审会\n待办按负责人列出")
+        #expect(Transcript(snapshot: t.snapshot).background == t.background)
+    }
+
+    @Test func backgroundGoesIntoThePrompts() {
+        #expect(SessionBackground.extra(standing: " Felix ", background: " \n") == "Felix")
+        let extra = SessionBackground.extra(standing: "Felix", background: "评审会")
+        #expect(extra.hasPrefix("Felix\n\n"))
+        #expect(extra.contains("<background>\n评审会\n</background>"))
+        #expect(SessionBackground.extra(standing: "", background: "评审会").hasPrefix("About this conversation"))
+        for prompt in [SummaryPrompt.system(language: "Chinese", extra: extra), AnswerPrompt.system(language: "Chinese", extra: extra)] {
+            #expect(prompt.contains("评审会"))
+        }
+        // Too long: the newest lines are kept, whole.
+        let long = (0..<400).map { "line \($0) " + String(repeating: "x", count: 30) }.joined(separator: "\n")
+        let cut = SessionBackground.extra(standing: "", background: long)
+        #expect(cut.count < SessionBackground.limit + 300)
+        #expect(cut.contains("line 399 ") && !cut.contains("line 0 "))
+        #expect(cut.contains("<background>\nline "))
+        // A long paragraph isn't thrown away for the sake of a clean cut.
+        let paragraph = SessionBackground.extra(standing: "", background: String(repeating: "长", count: 7_000) + "\n短")
+        #expect(paragraph.count > SessionBackground.limit)
+        // The notes take less of it.
+        let notes = SessionBackground.extra(standing: "", background: long, limit: SessionBackground.notesLimit)
+        #expect(notes.count < SessionBackground.notesLimit + 300 && notes.contains("line 399 "))
+    }
+}
+
 @Suite struct QuestionLogTests {
     @Test @MainActor func polishesBelongToTheQuestionBeforeThem() {
         let t = Transcript()

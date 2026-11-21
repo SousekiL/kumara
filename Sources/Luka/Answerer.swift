@@ -204,7 +204,7 @@ final class Answerer {
                                      conversation: conversation, knowledge: knowledge.excerpts(for: question),
                                      previous: previous, force: force)
         let lessons = tuner.tuning(for: mode).lessons
-        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context,
+        guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context(for: t),
                                                                         lessons: lessons),
                                             user: user, maxTokens: 4_000, stream: true) else { return }
         skipped = nil
@@ -225,7 +225,7 @@ final class Answerer {
         handled.formUnion(answer.ids)
         let user = PolishPrompt.user(question: answer.question, answer: answer.text,
                                      knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
-        guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.context),
+        guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.context(for: t)),
                                             user: user, maxTokens: 3_000, stream: true) else { return }
         write(request, into: t, live: Live(session: t.id, id: id, question: answer.text, polish: true), asker: nil)
     }
@@ -312,7 +312,7 @@ final class Answerer {
         let previous = t.answers.filter { $0.kind == "asked" }.suffix(3).map { (question: $0.question, answer: $0.answer) }
         let user = AskPrompt.user(question: question, conversation: conversation, notes: t.summary?.text,
                                   knowledge: knowledge.excerpts(for: question), previous: previous)
-        let system = AskPrompt.system(language: language, mode: mode, role: role, extra: service.context)
+        let system = AskPrompt.system(language: language, mode: mode, role: role, extra: service.context(for: t))
         let start = Live(session: t.id, id: id, question: question, polish: false, asked: true)
         askFailure = nil
         asking = start

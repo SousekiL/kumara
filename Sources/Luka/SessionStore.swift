@@ -71,11 +71,15 @@ final class SessionStore {
         cache[transcript.id] = transcript
     }
 
-    /// Writes the session if it changed. Sessions with nothing said are never written.
+    /// Writes the session if it changed. A session with nothing said is written only when the
+    /// reader has prepared it, by writing its background.
     func save(_ transcript: Transcript) {
         guard !deleted.contains(transcript.id) else { return }
         cache[transcript.id] = transcript
-        guard !transcript.lines.isEmpty, savedRevision[transcript.id] != transcript.revision else { return }
+        let prepared = SessionBackground.isWritten(transcript.background)
+        // One already written is written again, so a background that was cleared doesn't come back.
+        let written = summaries.contains { $0.id == transcript.id }
+        guard !transcript.lines.isEmpty || prepared || written, savedRevision[transcript.id] != transcript.revision else { return }
         let snapshot = transcript.snapshot
         let file = url(transcript.id)
         disk.async {
@@ -118,7 +122,9 @@ final class SessionStore {
     }
 
     private nonisolated static func summary(of s: TranscriptSnapshot) -> Summary {
-        let first = s.lines.first.map { $0.expectsTranslation && !$0.translatedText.isEmpty ? $0.translatedText : $0.original } ?? ""
+        // A session prepared ahead has nothing said yet: its background stands in.
+        let first = s.lines.first.map { $0.expectsTranslation && !$0.translatedText.isEmpty ? $0.translatedText : $0.original }
+            ?? s.background?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return Summary(id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt,
                        preview: String(first.prefix(120)), tags: s.tags ?? [])
     }

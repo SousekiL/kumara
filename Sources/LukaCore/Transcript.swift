@@ -141,6 +141,8 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var speakerSuggestedLines: Int? = nil
     /// Proposals taken up since the backup, to offer again when it is restored.
     public var speakerSuggestionsTaken: [SpeakerProposal]? = nil
+    /// What the reader wrote about this session for the assistant; absent when nothing was written.
+    public var background: String? = nil
 }
 
 @MainActor
@@ -173,6 +175,8 @@ public final class Transcript: Identifiable {
     public var answers: [QuestionAnswer] = [] { didSet { if answers != oldValue { touch() } } }
     /// The user's tags, for finding sessions again.
     public var tags: [String] = [] { didSet { if tags != oldValue { touch() } } }
+    /// What the reader wrote about this session for the assistant; see `SessionBackground`.
+    public var background = "" { didSet { if background != oldValue { touch() } } }
     /// The assistant mode the session was held in, last one used.
     public var mode: AssistantMode? { didSet { if mode != oldValue { touch() } } }
 
@@ -271,6 +275,7 @@ public final class Transcript: Identifiable {
         summary = s.summary
         answers = s.answers ?? []
         tags = s.tags ?? []
+        background = s.background ?? ""
         mode = s.mode.flatMap(AssistantMode.init(rawValue:))
         speakerBackup = s.speakerBackup
         speakerSuggestions = s.speakerSuggestions ?? []
@@ -289,7 +294,8 @@ public final class Transcript: Identifiable {
                            tags: tags.isEmpty ? nil : tags, mode: mode?.rawValue, speakerBackup: speakerBackup,
                            speakerSuggestions: speakerSuggestions.isEmpty ? nil : speakerSuggestions,
                            speakerNotes: speakerNotes.isEmpty ? nil : speakerNotes, speakerSuggestedLines: speakerSuggestedLines,
-                           speakerSuggestionsTaken: speakerSuggestionsTaken.isEmpty ? nil : speakerSuggestionsTaken)
+                           speakerSuggestionsTaken: speakerSuggestionsTaken.isEmpty ? nil : speakerSuggestionsTaken,
+                           background: background.isEmpty ? nil : background)
     }
 
     /// Stamps the session with the time listening first starts.

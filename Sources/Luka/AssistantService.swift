@@ -29,6 +29,11 @@ final class AssistantService {
             .filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
+    /// What the prompts about one session add: the standing context, then what the reader wrote about that session.
+    func context(for t: Transcript, limit: Int = SessionBackground.limit) -> String {
+        SessionBackground.extra(standing: context, background: t.background, limit: limit)
+    }
+
     private(set) var testResult: String?
     private(set) var testing = false
 
