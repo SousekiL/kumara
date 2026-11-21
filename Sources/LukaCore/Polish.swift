@@ -39,11 +39,11 @@ public enum PolishPrompt {
         public var status: String?
         /// The story, project or number the answer relied on.
         public var used: String?
-        /// The one fix to show during the interview; nil when nothing is worth fixing.
+        /// The one fix to show during the interview, under the question; nil when nothing is worth fixing.
         public var fix: String?
         /// A smoother version, kept for the review afterwards.
         public var better: String?
-        /// Language slips, each "what I said → what to say": shown under the question they answered.
+        /// Language slips, each "what I said → what to say".
         public var words: [String] = []
     }
 
@@ -117,6 +117,20 @@ extension Transcript {
     }
 }
 
+/// What a question's card shows about my own answers to it.
+public struct Coaching: Equatable, Sendable {
+    /// The fix from my latest answer to it: an earlier one has been said or passed by.
+    public var fix: String?
+    /// Language slips, each "what I said → what to say", newest last.
+    public var slips: [String] = []
+    public var isEmpty: Bool { fix == nil && slips.isEmpty }
+
+    public init(fix: String? = nil, slips: [String] = []) {
+        self.fix = fix
+        self.slips = slips
+    }
+}
+
 /// One interview question and how it went, for the question tracker.
 public struct QuestionLogEntry: Equatable, Sendable, Identifiable {
     public let question: QuestionAnswer
@@ -130,20 +144,21 @@ public struct QuestionLogEntry: Equatable, Sendable, Identifiable {
 extension Transcript {
     /// The interviewer's questions in order, each with how my answer went: a polish belongs to the
     /// question answered last before it. Built from the answers already made, with no extra request.
-    /// My language slips for each heard question, by the question's line, newest last. They sit under
-    /// the question's card, never in one of their own. An answer I gave to a question that got no card
-    /// (one judged to need no answer) has no card to sit under, so its slips aren't shown.
-    public var slips: [Int: [String]] {
+    /// The feedback on my answers to each heard question, by the question's line. It sits under the
+    /// question's card, never in one of its own. An answer I gave to a question that got no card
+    /// (one judged to need no answer) has no card to sit under, so its feedback isn't shown.
+    public var coaching: [Int: Coaching] {
         let cards = answers.filter { $0.kind != "polish" && $0.kind != "asked" }.map(\.id).sorted()
-        var out: [Int: [String]] = [:]
+        var out: [Int: Coaching] = [:]
         for item in answers where item.kind == "polish" {
             // A polish carries the line my answer ended on: the card is the last question before it.
-            guard let words = item.words, let card = cards.last(where: { $0 < item.id }) else { continue }
+            guard let card = cards.last(where: { $0 < item.id }) else { continue }
             let between = lines.filter { $0.id > card && $0.id < item.id && Channel($0.speaker) == .them }
             if between.contains(where: { AnswerEagerness.eager.accepts($0.original, fromThem: true) }) { continue }
-            out[card, default: []] += words
+            if !item.answer.isEmpty { out[card, default: Coaching()].fix = item.answer }
+            out[card, default: Coaching()].slips += item.words ?? []
         }
-        return out
+        return out.filter { !$0.value.isEmpty }
     }
 
     public var questionLog: [QuestionLogEntry] {

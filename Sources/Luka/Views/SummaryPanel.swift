@@ -332,14 +332,14 @@ struct SummaryPanel: View {
             .transition(.opacity)
         }
         let rows = answerRows
-        let askers = askers(of: Set(rows.filter { !$0.polish && !$0.asked }.map(\.id)))
+        let askers = askers(of: Set(rows.filter { !$0.asked }.map(\.id)))
         if !rows.isEmpty {
             // Newest first and at full strength; earlier ones step back.
             let newest = rows.first?.id
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(rows) { row in
                     AnswerCard(row: row, fontSize: model.assistant.fontSize, family: model.fontFamily,
-                               askerColor: row.polish ? .secondary : row.asked ? LukaTheme.accent : model.speakerColor(askers[row.id], in: transcript)) {
+                               askerColor: row.asked ? LukaTheme.accent : model.speakerColor(askers[row.id], in: transcript)) {
                         copy(row.answer, notice: tr("Copied answer"))
                     }
                     // The newest card carries the accent edge; earlier ones are quieter cards.
@@ -361,16 +361,14 @@ struct SummaryPanel: View {
 
     /// The session's answers, newest first, led by the one being written.
     private var answerRows: [AnswerRow] {
-        // A polish with nothing to fix only feeds the question tracker.
-        let slips = transcript.slips
-        var rows = transcript.answers.reversed().filter { !($0.kind == "polish" && $0.answer.isEmpty) }.map { item in
-            // The newest few: a card is for the question first.
-            AnswerRow(item, slips: item.kind == "polish" || item.kind == "asked" ? [] : Array((slips[item.id] ?? []).suffix(3)))
+        // Feedback on my own answers has no card: it sits under the question it answered.
+        let coaching = transcript.coaching
+        var rows = transcript.answers.reversed().filter { $0.kind != "polish" }.map { item in
+            AnswerRow(item, coaching: item.kind == "asked" ? nil : coaching[item.id])
         }
-        // A polish shows only once it has a fix; most of its reply is for the tracker and the review.
         // A heard question shows only once the model commits to answering it: until then it may
         // still judge that it needs none, and a card that appears and vanishes is just noise.
-        if let live = answerer.live, live.session == transcript.id, live.polish ? live.text != nil : live.committed,
+        if let live = answerer.live, live.session == transcript.id, !live.polish, live.committed,
            !rows.contains(where: { $0.id == live.id }) {
             rows.insert(AnswerRow(live), at: 0)
         }
@@ -608,23 +606,23 @@ struct AnswerRow: Identifiable {
     let answer: String?
     let kind: String?
     let fromKnowledge: Bool
-    let polish: Bool
     /// A question the reader typed, and what its answer rests on.
     let asked: Bool
     let source: String?
     let restated: String?
     let createdAt: Date?
-    /// My language slips while answering this question.
+    /// The fix from my latest answer to this question, and my newest language slips: a card is for the question first.
+    var fix: String?
     var slips: [String] = []
 
-    init(_ item: QuestionAnswer, slips: [String] = []) {
-        self.slips = slips
+    init(_ item: QuestionAnswer, coaching: Coaching? = nil) {
+        fix = coaching?.fix
+        slips = Array((coaching?.slips ?? []).suffix(3))
         id = item.id
         question = item.question
         answer = item.answer
-        kind = item.kind == "polish" || item.kind == "asked" ? nil : item.kind
+        kind = item.kind == "asked" ? nil : item.kind
         fromKnowledge = item.fromKnowledge
-        polish = item.kind == "polish"
         asked = item.kind == "asked"
         source = item.source
         restated = item.restated
@@ -637,7 +635,6 @@ struct AnswerRow: Identifiable {
         answer = live.text
         kind = live.kind
         fromKnowledge = live.fromKnowledge
-        polish = live.polish
         asked = live.asked
         source = live.source
         restated = live.restated
@@ -661,9 +658,7 @@ private struct AnswerCard: View {
         VStack(alignment: .leading, spacing: fontSize * 0.6) {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 Circle().fill(askerColor).frame(width: 6, height: 6)
-                // For a polish, the question line is what I said; show its start, not its last sentence.
-                Text(row.polish ? tr("You said") + ": " + row.question
-                     : row.asked ? tr("You asked") + ": " + row.question
+                Text(row.asked ? tr("You asked") + ": " + row.question
                      : row.restated ?? Questions.lastSentence(row.question) ?? row.question)
                     .font(LukaFont.font(family, size: max(11, fontSize - 2), weight: row.asked ? .medium : .regular))
                     .foregroundStyle(row.asked ? .primary : .secondary)
@@ -683,17 +678,21 @@ private struct AnswerCard: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             }
-            if !row.slips.isEmpty {
+            if row.fix != nil || !row.slips.isEmpty {
                 // Small and grey, under the answer: a reminder, not something to compete with it.
                 VStack(alignment: .leading, spacing: fontSize * 0.25) {
+                    if let fix = row.fix {
+                        Label { Text(AnswerText.styled(fix)) } icon: { Image(systemName: "lightbulb") }
+                            .help(tr("A fix for your answer"))
+                    }
                     ForEach(row.slips, id: \.self) { slip in
                         Label(slip, systemImage: "textformat.abc")
+                            .help(tr("Your wording: what you said → what to say"))
                     }
                 }
                 .font(LukaFont.font(family, size: max(11, fontSize - 2)))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .help(tr("Your wording: what you said → what to say"))
             }
             footer
         }
@@ -703,9 +702,7 @@ private struct AnswerCard: View {
 
     private var footer: some View {
         HStack(spacing: 6) {
-            if row.polish {
-                KindTag(kind: "polish")
-            } else if let kind = row.kind {
+            if let kind = row.kind {
                 KindTag(kind: kind)
             }
             if row.asked, row.answer != nil {
@@ -714,7 +711,7 @@ private struct AnswerCard: View {
                 case "knowledge": Label(tr("From your knowledge base"), systemImage: "books.vertical")
                 default: Label(tr("Model’s own knowledge"), systemImage: "sparkles")
                 }
-            } else if row.answer != nil, !row.polish {
+            } else if row.answer != nil {
                 Label(row.fromKnowledge ? tr("From your knowledge base") : tr("Model’s own knowledge"),
                       systemImage: row.fromKnowledge ? "books.vertical" : "sparkles")
             }
@@ -1268,7 +1265,6 @@ enum QuestionKind {
         case "experience": tr("Experience")
         case "motivation": tr("Motivation")
         case "reverse": tr("Your questions")
-        case "polish": tr("Polish")
         case "for-me": tr("For you")
         default: kind
         }
@@ -1281,7 +1277,6 @@ enum QuestionKind {
         case "behavioral": .orange
         case "experience": .green
         case "motivation": .pink
-        case "polish": .teal
         case "for-me": .indigo
         default: .gray
         }

@@ -487,7 +487,8 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
                      QuestionAnswer(id: -5, question: "typed", answer: "A", fromKnowledge: false, createdAt: .now, kind: "asked"),
                      QuestionAnswer(id: 3, question: "said", answer: "Next: x", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["a → b"]),
                      QuestionAnswer(id: 4, question: "Q2?", answer: "A", fromKnowledge: false, createdAt: .now)]
-        #expect(t.slips == [1: ["datas → data", "a → b"]])
+        // The fix comes along, the newest one only.
+        #expect(t.coaching == [1: Coaching(fix: "Next: x", slips: ["datas → data", "a → b"])])
         // An answer to a question that got no card isn't put under the card before it.
         let s = Transcript()
         s.ingest(tokens([("Tell me about a project you led.", true, nil), ("<end>", true, nil)]), channel: .them)
@@ -498,7 +499,7 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         s.answers = [QuestionAnswer(id: ids[0], question: "Q", answer: "A", fromKnowledge: false, createdAt: .now),
                      QuestionAnswer(id: ids[1], question: "said", answer: "", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["leaded → led"]),
                      QuestionAnswer(id: ids[3], question: "said", answer: "", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["very clear → very clearly"])]
-        #expect(s.slips == [ids[0]: ["leaded → led"]])
+        #expect(s.coaching == [ids[0]: Coaching(slips: ["leaded → led"])])
         #expect(PolishPrompt.parse("STATUS: complete\nUSED: -\nFIX: -\nWORDS: -\nBETTER: Fine.")?.words == [])
         // An old-style reply still shows as a fix.
         #expect(PolishPrompt.parse("I led the pricing project.\n- like → (drop)")?.fix?.hasPrefix("I led") == true)
