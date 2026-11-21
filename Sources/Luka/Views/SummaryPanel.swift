@@ -288,8 +288,6 @@ struct SummaryPanel: View {
             Text(tr("Answering…"))
         } else if !answerer.enabled {
             Text(tr("Off"))
-        } else if model.assistantMode == .lecture {
-            Text(tr("Not answering in Lecture mode"))
         } else if model.assistant.isConfigured {
             Text(answerer.knowledgeCharacters > 0 ? tr("Using your knowledge base") : tr("No knowledge base; the model answers on its own"))
         } else {
@@ -1216,6 +1214,7 @@ private struct ModeChip: View {
 extension AssistantMode {
     var title: String {
         switch self {
+        case .transcribe: tr("Transcribe")
         case .lecture: tr("Lecture")
         case .meeting: tr("Meeting")
         case .interview: tr("Interview")
@@ -1224,6 +1223,7 @@ extension AssistantMode {
 
     var symbol: String {
         switch self {
+        case .transcribe: "captions.bubble"
         case .lecture: "graduationcap"
         case .meeting: "person.3"
         case .interview: "person.2"
@@ -1232,8 +1232,9 @@ extension AssistantMode {
 
     var explanation: String {
         switch self {
-        case .lecture: tr("Talks, lectures, podcasts and videos: notes in numbered sections that stay put once the talk moves on, with the key terms gathered above. No answers. Turns the summary, answers and Me / Them off; turn the summary on to take notes.")
-        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. Only factual or technical questions get a short answer. Turns on the summary and Me / Them, with each other person numbered; answers off.")
+        case .transcribe: tr("Transcription and translation only. Turns every helper off.")
+        case .lecture: tr("Talks, lectures, podcasts and videos: notes in numbered sections that stay put once the talk moves on, with the key terms gathered above. Turns on the summary; everything else off.")
+        case .meeting: tr("Meetings and calls: running notes added in order, with decisions and tasks marked. If you turn answers on, only factual or technical questions get a short answer. Turns on the summary; everything else off.")
         case .interview: tr("Interviews: interview questions for your role answered in the first person, and your own answers polished; running notes of each question if you turn the summary on. Turns on answers, Me / Them, the pinned question and polishing; the summary off.")
         }
     }

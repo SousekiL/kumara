@@ -156,13 +156,6 @@ final class AppModel {
         }
     }
 
-    /// Interview answers need to know which words are mine: turning them on in Interview mode turns on Me / Them.
-    private func answersChanged() {
-        guard answerer.enabled, assistantMode == .interview, !separatesSpeakers, mode != .threeWay else { return }
-        separatesSpeakers = true
-        show(tr("Me / Them is on for Interview answers. Wear headphones."))
-    }
-
     /// In Me / Them mode, whether your own words are translated too, or only written down.
     var translatesMyVoice: Bool { didSet { store(translatesMyVoice, "translatesMyVoice"); if splitsBySource { streamSettingsChanged() } } }
     /// Keep the latest question someone asked above the captions.
@@ -356,7 +349,7 @@ final class AppModel {
         assistant = service
         summarizer = Summarizer(service: service)
         answerer = Answerer(service: service)
-        assistantMode = AssistantMode(rawValue: d.string(forKey: "assistant.mode") ?? "") ?? .meeting
+        assistantMode = AssistantMode(rawValue: d.string(forKey: "assistant.mode") ?? "") ?? .transcribe
         let env = ProcessInfo.processInfo.environment
         apiKey = SecretStore.read() ?? env["SONIOX_API_KEY"] ?? ""
         let storedRegion = SonioxRegion(rawValue: d.string(forKey: "region") ?? "")
@@ -421,7 +414,6 @@ final class AppModel {
                 self.handleTranslation(event, lane: lane)
             }
         }
-        answerer.onEnabledChange = { [weak self] in self?.answersChanged() }
         watchSystemTheme()
         answerer.onAsked = { [weak self] t in self?.store.save(t) }
         speakerIdentifier.onResult = { [weak self] t in self?.store.save(t) }

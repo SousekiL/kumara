@@ -365,7 +365,7 @@ public enum AskPrompt {
             """
         }
         var prompt = """
-        The reader is in a live \(mode == .interview ? "interview" : mode == .lecture ? "talk or lecture" : "meeting or call") and is asking you a question directly. Answer it.
+        The reader is in a live \(mode == .interview ? "interview" : mode == .lecture ? "talk or lecture" : mode == .meeting ? "meeting or call" : "conversation") and is asking you a question directly. Answer it.
         Use, in this order: what was said in the conversation, the reader's knowledge base, then your own knowledge.
         Start with one line "SOURCE: transcript" when the answer comes from the conversation, "SOURCE: knowledge" when it rests on the knowledge base, or "SOURCE: model" when it is your own knowledge.
         \(format)

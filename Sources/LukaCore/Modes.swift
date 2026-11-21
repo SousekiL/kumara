@@ -3,6 +3,8 @@ import Foundation
 /// What kind of conversation the assistant is following. It decides how the summary is kept
 /// and how readily questions get answered.
 public enum AssistantMode: String, Codable, CaseIterable, Sendable {
+    /// Transcription and translation only: every helper off until the reader turns one on.
+    case transcribe
     /// A talk, lecture, podcast or video: one speaker, one line of argument.
     case lecture
     /// A working meeting or call.
@@ -10,7 +12,8 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
     /// An interview in which the reader is the one being interviewed.
     case interview
 
-    /// What choosing a mode turns on and off. Each stays a separate switch afterwards.
+    /// What choosing a mode turns on and off. Each stays a separate switch afterwards, and
+    /// changing one by hand changes nothing else: only choosing a mode sets the scene.
     public struct Scene: Equatable, Sendable {
         public var summary: Bool
         public var answers: Bool
@@ -23,18 +26,21 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
 
     public var scene: Scene {
         switch self {
-        case .lecture: Scene(summary: false, answers: false, separatesSpeakers: false, pinsQuestions: false, polishes: nil)
-        case .meeting: Scene(summary: true, answers: false, separatesSpeakers: true, pinsQuestions: false, polishes: nil)
+        case .transcribe: Scene(summary: false, answers: false, separatesSpeakers: false, pinsQuestions: false, polishes: nil)
+        case .lecture: Scene(summary: true, answers: false, separatesSpeakers: false, pinsQuestions: false, polishes: nil)
+        case .meeting: Scene(summary: true, answers: false, separatesSpeakers: false, pinsQuestions: false, polishes: nil)
+        // Me / Them stays on here: it is how the answers tell the interviewer's questions from the reader's own.
         case .interview: Scene(summary: false, answers: true, separatesSpeakers: true, pinsQuestions: true, polishes: true)
         }
     }
 
 
-    /// Lectures get no answers: their questions are the speaker's own, or put to the room.
-    /// Meetings only get help with a factual question; interviews with every interview question.
+    /// How readily a line is sent to the model as a possible question, once answers are on.
+    /// Lectures and meetings only for a plain question; interviews for every interview question.
     public var eagerness: AnswerEagerness {
         switch self {
-        case .lecture: .off
+        case .transcribe: .normal
+        case .lecture: .conservative
         case .meeting: .conservative
         case .interview: .eager
         }
@@ -43,6 +49,8 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
     /// Added to the summary prompt.
     var summaryGuidance: String {
         switch self {
+        case .transcribe:
+            ""
         case .lecture:
             "This is a talk, lecture, podcast or video with a main line of argument, and the reader wants to follow it now and review it later. Number the headings in order (\"## 1. …\", \"## 2. …\"), one per part of the talk, following the speaker's own structure. Under each, 1 to 3 bullets: the point, the example or evidence behind it, and any formula or number. When the speaker stresses something (\"the key point is…\"), keep it. When the speaker introduces or defines a term, add a bullet of exactly this shape: \"[Term] the term as said — a short gloss in the notes' language — a one-line definition\". Each term once."
         case .meeting:
@@ -55,8 +63,12 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
     /// Added to the answer prompt. `role` is the job the reader is interviewing for.
     func answerGuidance(role: String) -> String {
         switch self {
-        case .lecture:
+        case .transcribe:
             return ""
+        case .lecture:
+            return """
+            This is a talk, lecture, podcast or video. Most questions in it are the speaker's own: rhetorical, put to the room, or answered in the next lines. Reply SKIP to those. Answer a question only where a short, correct answer helps the reader follow: a definition, a fact, a number, how something works. When in doubt, SKIP.
+            """
         case .meeting:
             return """
             This is a meeting. Most questions in a meeting pass between the participants and need no help from you. Reply SKIP to: opinions and discussion ("what do you think?", "should we…?"), check-ins and confirmations ("right?", "does that work?", "any objections?"), logistics and scheduling, requests to someone about their own work or status ("did you send it?", "where are we on…?"), rhetorical questions, and anything answered in the next lines.
@@ -96,8 +108,6 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
 
 /// How much it takes for a line to be sent to the model as a possible question.
 public enum AnswerEagerness: Sendable, Equatable {
-    /// Nothing is answered.
-    case off
     /// Only a line that ends in a question mark.
     case conservative
     /// A line that ends in a question or a prompt.
@@ -107,8 +117,6 @@ public enum AnswerEagerness: Sendable, Equatable {
 
     func accepts(_ text: String, fromThem: Bool) -> Bool {
         switch self {
-        case .off:
-            return false
         case .conservative:
             guard let last = Questions.lastSentence(text) else { return false }
             return last.hasSuffix("?") || last.hasSuffix("？")

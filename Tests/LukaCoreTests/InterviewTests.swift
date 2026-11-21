@@ -385,7 +385,10 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.system(language: "English", mode: .interview).contains("first person"))
         #expect(AnswerPrompt.system(language: "English", mode: .interview, role: "Data Scientist").contains("a Data Scientist position"))
         #expect(AnswerPrompt.system(language: "English", mode: .meeting).contains("When in doubt, SKIP"))
-        #expect(AssistantMode.lecture.eagerness == .off && AssistantMode.meeting.eagerness == .conservative)
+        // A helper turned on by hand works in every mode.
+        #expect(AssistantMode.lecture.eagerness == .conservative && AssistantMode.meeting.eagerness == .conservative)
+        #expect(AssistantMode.transcribe.eagerness == .normal)
+        #expect(AnswerPrompt.system(language: "English", mode: .lecture).contains("This is a talk"))
     }
 }
 
@@ -395,7 +398,6 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
     @Test func lectureAnswersNothing() {
         let t = Transcript()
         t.ingest(tokens([("So why does regression to the mean happen?", true, nil), ("<end>", true, nil)]))
-        #expect(t.waitingQuestion(handled: [], channelsOnly: false, eagerness: .off) == nil)
         #expect(t.waitingQuestion(handled: [], channelsOnly: false, eagerness: .conservative) != nil)
     }
 
@@ -557,10 +559,14 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
     }
 
     @Test func modesSetTheScene() {
-        #expect(AssistantMode.interview.scene.answers && AssistantMode.interview.scene.separatesSpeakers && AssistantMode.interview.scene.pinsQuestions)
-        #expect(!AssistantMode.interview.scene.summary)
-        #expect(AssistantMode.meeting.scene.summary && AssistantMode.meeting.scene.separatesSpeakers && !AssistantMode.meeting.scene.answers)
-        #expect(!AssistantMode.lecture.scene.summary && !AssistantMode.lecture.scene.answers && AssistantMode.lecture.scene.polishes == nil)
+        let off = AssistantMode.Scene(summary: false, answers: false, separatesSpeakers: false, pinsQuestions: false, polishes: nil)
+        #expect(AssistantMode.transcribe.scene == off)
+        var notes = off
+        notes.summary = true
+        #expect(AssistantMode.lecture.scene == notes && AssistantMode.meeting.scene == notes)
+        let interview = AssistantMode.interview.scene
+        #expect(interview.answers && interview.separatesSpeakers && interview.pinsQuestions && interview.polishes == true)
+        #expect(!interview.summary)
     }
 }
 

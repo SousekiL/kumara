@@ -56,10 +56,8 @@ final class Answerer {
             sessionID = nil
             if !enabled { stop() }
             if enabled { reload() }
-            onEnabledChange()
         }
     }
-    @ObservationIgnored var onEnabledChange: () -> Void = {}
     /// The job being interviewed for, which tells Interview mode what counts as a technical question.
     var role: String { didSet { defaults.set(role, forKey: "answers.role") } }
     /// In Interview mode with Me / Them: a smoother version of each of my answers, and quick fixes.
