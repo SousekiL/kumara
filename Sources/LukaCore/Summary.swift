@@ -81,10 +81,21 @@ public struct SummaryEndpoint: Sendable, Equatable {
     /// How hard the model reasons before answering.
     public enum Thinking: Sendable, Equatable {
         case none
-        /// Newer Claude models: adaptive thinking at high effort. OpenAI-compatible: highest reasoning effort.
+        /// Newer Claude models: adaptive thinking. OpenAI-compatible: reasoning effort. Both at the request's `effort`.
         case adaptive
         /// Older Claude models: extended thinking with a fixed token budget.
         case budget
+    }
+
+    /// How much thinking a request is worth.
+    public enum Effort: String, Sendable {
+        /// A question typed during the conversation: the reader is waiting.
+        case medium
+        /// Reading a whole session to work something out, such as who each speaker is.
+        case high
+
+        /// Thinking tokens for models that take a fixed budget.
+        var budget: Int { self == .high ? 10_000 : 5_000 }
     }
 
     /// The styles to try, best first: each model accepts only some, and says so when it doesn't.
@@ -98,10 +109,17 @@ public struct SummaryEndpoint: Sendable, Equatable {
         return ["thinking", "output_config", "effort", "reasoning", "adaptive", "max_tokens"].contains { m.contains($0) }
     }
 
+    private static func block(_ text: String, cached: Bool) -> [String: Any] {
+        cached ? ["type": "text", "text": text, "cache_control": ["type": "ephemeral"]] : ["type": "text", "text": text]
+    }
+
     /// `stream` asks for server-sent events, read with `streamChunk(_:)`.
     /// `thinking` asks for the model's deeper reasoning, for questions worth waiting on.
-    public func request(apiKey: String, system: String, user: String, maxTokens: Int = 1_500, stream: Bool = false,
-                        thinking: Thinking = .none) -> URLRequest? {
+    /// `shared` is text that opens the user message and is the same from one request to the next (the
+    /// knowledge base): Claude is told to cache up to its end, like the system prompt, so a repeat is
+    /// billed at a fraction. OpenAI-compatible services cache a repeated beginning on their own.
+    public func request(apiKey: String, system: String, user: String, shared: String = "", maxTokens: Int = 1_500,
+                        stream: Bool = false, thinking: Thinking = .none, effort: Effort = .medium) -> URLRequest? {
         guard let url else { return nil }
         var r = URLRequest(url: url)
         r.httpMethod = "POST"
@@ -116,7 +134,7 @@ public struct SummaryEndpoint: Sendable, Equatable {
             // No temperature or token cap: newer OpenAI models reject them, and the prompt keeps it short.
             body = [
                 "model": model,
-                "messages": [["role": "system", "content": system], ["role": "user", "content": user]],
+                "messages": [["role": "system", "content": system], ["role": "user", "content": shared + user]],
             ]
         case .anthropic:
             r.setValue(key, forHTTPHeaderField: "x-api-key")
@@ -124,23 +142,25 @@ public struct SummaryEndpoint: Sendable, Equatable {
             body = [
                 "model": model,
                 "max_tokens": maxTokens,
-                "system": system,
-                "messages": [["role": "user", "content": user]],
+                // A prompt too short to cache is simply sent as usual.
+                "system": [Self.block(system, cached: true)],
+                "messages": [["role": "user", "content": shared.isEmpty ? [Self.block(user, cached: false)]
+                    : [Self.block(shared, cached: true), Self.block(user, cached: false)]]],
             ]
         }
         switch (provider, thinking) {
         case (_, .none):
             break
         case (.openAI, _):
-            body["reasoning_effort"] = "high"
+            body["reasoning_effort"] = effort.rawValue
         case (.anthropic, .adaptive):
             // Thinking shares max_tokens with the answer.
             body["max_tokens"] = max(maxTokens, 16_000)
             body["thinking"] = ["type": "adaptive"]
-            body["output_config"] = ["effort": "high"]
+            body["output_config"] = ["effort": effort.rawValue]
         case (.anthropic, .budget):
             body["max_tokens"] = max(maxTokens, 16_000)
-            body["thinking"] = ["type": "enabled", "budget_tokens": 10_000]
+            body["thinking"] = ["type": "enabled", "budget_tokens": effort.budget]
         }
         if stream {
             body["stream"] = true

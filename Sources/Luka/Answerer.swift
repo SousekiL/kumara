@@ -200,13 +200,17 @@ final class Answerer {
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
         // Only questions the other side asked: my own answers and typed questions aren't repeats to skip.
         let previous = force ? [] : t.answers.filter { $0.kind != "polish" && $0.kind != "asked" }.suffix(3).map(\.shownQuestion)
+        // A knowledge base small enough to send whole is the same every time: it goes first, on its own, to be cached.
+        let whole = knowledge.fitsWhole()
+        let excerpts = knowledge.excerpts(for: question)
         let user = AnswerPrompt.user(question: question, asker: asker.map(name) ?? "someone",
-                                     conversation: conversation, knowledge: knowledge.excerpts(for: question),
+                                     conversation: conversation, knowledge: whole ? "" : excerpts,
                                      previous: previous, force: force)
         let lessons = tuner.tuning(for: mode).lessons
         guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context(for: t),
                                                                         lessons: lessons),
-                                            user: user, maxTokens: 4_000, stream: true) else { return }
+                                            user: user, shared: whole ? AnswerPrompt.knowledgeBlock(excerpts) : "",
+                                            maxTokens: 4_000, stream: true) else { return }
         skipped = nil
         write(request, into: t, live: Live(session: t.id, id: id, question: question, polish: false, committed: force),
               asker: asker)
