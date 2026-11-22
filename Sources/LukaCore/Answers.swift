@@ -25,10 +25,12 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
     public var restated: String?
     /// For a polish: my language slips, each "what I said → what to say".
     public var words: [String]?
+    /// For a polish: a detail that mattered and was left out of my answer.
+    public var detail: String?
 
     public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date, kind: String? = nil,
                 status: String? = nil, used: String? = nil, better: String? = nil, source: String? = nil,
-                restated: String? = nil, words: [String]? = nil) {
+                restated: String? = nil, words: [String]? = nil, detail: String? = nil) {
         self.id = id
         self.question = question
         self.answer = answer
@@ -41,6 +43,7 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
         self.source = source
         self.restated = restated
         self.words = words
+        self.detail = detail
     }
 
     /// The question as shown: restated when the model gave one, otherwise its last sentence.
@@ -191,6 +194,7 @@ public enum AnswerPrompt {
         Reply with the final answer only. Never show your reasoning, second thoughts or corrections: decide first, then write once.
 
         Sources
+        - Materials the reader prepared for this conversation (their script, notes, documents), when provided, come before everything else. When they cover the question, answer from them and keep their wording, facts, names and numbers. Start with "SOURCE: knowledge".
         - When the reader's knowledge base is provided and covers the question, answer from it and keep its facts, names and numbers exactly. Where it differs from what you know, the knowledge base wins. Start with "SOURCE: knowledge".
         - When it doesn't cover the question, or none is provided, answer from your own knowledge and start with "SOURCE: model".
         - Never invent facts about the reader: their experience, opinions, projects or numbers. For a personal question the knowledge base doesn't cover, give the points to cover, in order, instead.
@@ -233,9 +237,14 @@ public enum AnswerPrompt {
         knowledge.isEmpty ? "" : "The reader's knowledge base (excerpts):\n<knowledge>\n\(knowledge)\n</knowledge>\n\n"
     }
 
-    public static func user(question: String, asker: String, conversation: String, knowledge: String, previous: [String] = [],
-                            force: Bool = false) -> String {
-        var out = knowledgeBlock(knowledge)
+    /// What the reader attached to this session. Sent on its own when it is all of it, like the knowledge base.
+    public static func materialsBlock(_ materials: String) -> String {
+        materials.isEmpty ? "" : "Materials the reader prepared for this conversation (excerpts). They come first:\n<materials>\n\(materials)\n</materials>\n\n"
+    }
+
+    public static func user(question: String, asker: String, conversation: String, knowledge: String, materials: String = "",
+                            previous: [String] = [], force: Bool = false) -> String {
+        var out = materialsBlock(materials) + knowledgeBlock(knowledge)
         if !conversation.isEmpty {
             out += "Recent conversation:\n<conversation>\n\(conversation)\n</conversation>\n\n"
         }
@@ -369,8 +378,8 @@ public enum AskPrompt {
         }
         var prompt = """
         The reader is in a live \(mode == .interview ? "interview" : mode == .lecture ? "talk or lecture" : mode == .meeting ? "meeting or call" : "conversation") and is asking you a question directly. Answer it.
-        Use, in this order: what was said in the conversation, the reader's knowledge base, then your own knowledge.
-        Start with one line "SOURCE: transcript" when the answer comes from the conversation, "SOURCE: knowledge" when it rests on the knowledge base, or "SOURCE: model" when it is your own knowledge.
+        Use, in this order: what was said in the conversation, the materials the reader prepared for this conversation, the reader's knowledge base, then your own knowledge.
+        Start with one line "SOURCE: transcript" when the answer comes from the conversation, "SOURCE: knowledge" when it rests on the materials or the knowledge base, or "SOURCE: model" when it is your own knowledge.
         \(format)
         When the question is about the conversation and the transcript doesn't settle it, say so plainly instead of guessing. The transcript comes from speech recognition and may contain errors; read through them. Never invent the reader's facts or numbers. No headings, no preamble, never show your reasoning.
         """
@@ -380,11 +389,12 @@ public enum AskPrompt {
         return prompt
     }
 
-    public static func user(question: String, conversation: String, notes: String?, knowledge: String,
+    public static func user(question: String, conversation: String, notes: String?, knowledge: String, materials: String = "",
                             previous: [(question: String, answer: String)] = []) -> String {
         var parts: [String] = []
         if let notes, !notes.isEmpty { parts.append("Notes taken so far:\n<notes>\n\(notes)\n</notes>") }
         parts.append("The conversation (most recent part):\n<conversation>\n\(conversation)\n</conversation>")
+        if !materials.isEmpty { parts.append("Materials the reader prepared for this conversation:\n<materials>\n\(materials)\n</materials>") }
         if !knowledge.isEmpty { parts.append("From the reader's knowledge base:\n<knowledge>\n\(knowledge)\n</knowledge>") }
         if !previous.isEmpty {
             parts.append("The reader's earlier questions, for follow-ups:\n" + previous.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n"))

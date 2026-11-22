@@ -8,12 +8,53 @@ import LukaCore
 final class AssistantService {
     private let defaults = UserDefaults.standard
 
-    // Stored under the keys the summary used before the two shared a service, so nothing is lost.
-    var provider: SummaryProvider { didSet { defaults.set(provider.rawValue, forKey: "summary.provider") } }
-    /// Empty uses the provider's default endpoint.
-    var baseURL: String { didSet { defaults.set(baseURL, forKey: "summary.baseURL") } }
-    var model: String { didSet { defaults.set(model, forKey: "summary.model") } }
-    var apiKey: String { didSet { SecretStore.save(apiKey, slot: "summary") } }
+    /// The services the user has added, each with the models they use there. Added once, then
+    /// each part of the app picks one of their models.
+    var providers: [ModelProvider] {
+        didSet { if let data = try? JSONEncoder().encode(providers) { defaults.set(data, forKey: "assistant.providers") } }
+    }
+    /// Each provider's API key, kept with the other secrets rather than in the settings.
+    private(set) var keys: [UUID: String]
+    /// The model for the live helpers: the summary, the answers, feedback and the review.
+    var liveChoice: ModelChoice? { didSet { Self.store(liveChoice, "assistant.liveChoice") } }
+    /// The model for deep analysis; nil uses the live helpers' model.
+    var deepChoice: ModelChoice? { didSet { Self.store(deepChoice, "assistant.deepChoice") } }
+
+    func key(for provider: UUID) -> String { keys[provider] ?? "" }
+
+    func setKey(_ key: String, for provider: UUID) {
+        keys[provider] = key
+        SecretStore.save(key, slot: Self.slot(provider))
+    }
+
+    @discardableResult
+    func addProvider(name: String, kind: SummaryProvider, baseURL: String, model: String) -> UUID {
+        let provider = ModelProvider(name: name, kind: kind, baseURL: baseURL, modelList: model)
+        providers.append(provider)
+        // The first model added is the one to use, so a new install works without a second step.
+        if liveChoice == nil, let first = provider.models.first { liveChoice = ModelChoice(provider: provider.id, model: first) }
+        return provider.id
+    }
+
+    func removeProvider(_ id: UUID) {
+        providers.removeAll { $0.id == id }
+        setKey("", for: id)
+        keys[id] = nil
+        if liveChoice?.provider == id { liveChoice = nil }
+        if deepChoice?.provider == id { deepChoice = nil }
+    }
+
+    private static func slot(_ provider: UUID) -> String { "provider-" + provider.uuidString }
+
+    private static func store(_ choice: ModelChoice?, _ key: String) {
+        UserDefaults.standard.set(choice.flatMap { try? JSONEncoder().encode($0) }, forKey: key)
+    }
+
+    private static func choice(_ key: String) -> ModelChoice? {
+        UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode(ModelChoice.self, from: $0) }
+    }
+
+    private var apiKey: String { providers.resolve(liveChoice).map { key(for: $0.provider.id) } ?? "" }
     /// Soniox language code; empty follows the translation language, "guide" is bilingual.
     var language: String { didSet { defaults.set(language, forKey: "summary.language") } }
     var fontSize: Double { didSet { defaults.set(fontSize, forKey: "summary.fontSize") } }
@@ -38,11 +79,9 @@ final class AssistantService {
     private(set) var testing = false
 
     // A separate model for questions the reader asks: worth a stronger model and a longer wait.
-    var askUsesOwnModel: Bool { didSet { defaults.set(askUsesOwnModel, forKey: "ask.ownModel") } }
-    var askProvider: SummaryProvider { didSet { defaults.set(askProvider.rawValue, forKey: "ask.provider") } }
-    var askBaseURL: String { didSet { defaults.set(askBaseURL, forKey: "ask.baseURL") } }
-    var askModel: String { didSet { defaults.set(askModel, forKey: "ask.model") } }
-    var askAPIKey: String { didSet { SecretStore.save(askAPIKey, slot: "ask") } }
+    // A choice whose provider or model has since been removed falls back to the live helpers' model.
+    private var askUsesOwnModel: Bool { providers.resolve(deepChoice) != nil }
+    private var askAPIKey: String { providers.resolve(deepChoice).map { key(for: $0.provider.id) } ?? "" }
     /// Deepest reasoning for asked questions (extended thinking, or high reasoning effort).
     var askThinks: Bool { didSet { defaults.set(askThinks, forKey: "ask.thinks") } }
     private(set) var askTestResult: String?
@@ -50,19 +89,36 @@ final class AssistantService {
 
     init() {
         let d = UserDefaults.standard
-        provider = SummaryProvider(rawValue: d.string(forKey: "summary.provider") ?? "") ?? .openAI
-        baseURL = d.string(forKey: "summary.baseURL") ?? ""
-        model = d.string(forKey: "summary.model") ?? ""
-        apiKey = SecretStore.read("summary") ?? ""
+        if let data = d.data(forKey: "assistant.providers"), let saved = try? JSONDecoder().decode([ModelProvider].self, from: data) {
+            providers = saved
+            keys = Dictionary(uniqueKeysWithValues: saved.compactMap { p in SecretStore.read(Self.slot(p.id)).map { (p.id, $0) } })
+            liveChoice = Self.choice("assistant.liveChoice")
+            deepChoice = Self.choice("assistant.deepChoice")
+        } else {
+            // From before providers were a list: one service typed in full, and optionally a second.
+            // The old settings and keys are left where they were.
+            let live = LegacyModelSettings.Slot(kind: SummaryProvider(rawValue: d.string(forKey: "summary.provider") ?? "") ?? .openAI,
+                                                baseURL: d.string(forKey: "summary.baseURL") ?? "", model: d.string(forKey: "summary.model") ?? "",
+                                                key: SecretStore.read("summary") ?? "")
+            let deep = !d.bool(forKey: "ask.ownModel") ? nil
+                : LegacyModelSettings.Slot(kind: SummaryProvider(rawValue: d.string(forKey: "ask.provider") ?? "") ?? .anthropic,
+                                           baseURL: d.string(forKey: "ask.baseURL") ?? "", model: d.string(forKey: "ask.model") ?? "",
+                                           key: SecretStore.read("ask") ?? "")
+            let migrated = LegacyModelSettings.migrate(live: live, deep: deep)
+            providers = migrated.providers
+            keys = migrated.keys
+            liveChoice = migrated.live
+            deepChoice = migrated.deep
+            // Property observers don't run in init: write what they would have.
+            if let data = try? JSONEncoder().encode(migrated.providers) { d.set(data, forKey: "assistant.providers") }
+            for (id, key) in migrated.keys { SecretStore.save(key, slot: Self.slot(id)) }
+            Self.store(migrated.live, "assistant.liveChoice")
+            Self.store(migrated.deep, "assistant.deepChoice")
+        }
         language = d.string(forKey: "summary.language") ?? ""
         // 14 pt reads comfortably at arm's length in a side column; 13 is the system's body size.
         fontSize = d.object(forKey: "summary.fontSize") as? Double ?? 14
         readerNames = d.string(forKey: "assistant.readerNames") ?? ""
-        askUsesOwnModel = d.bool(forKey: "ask.ownModel")
-        askProvider = SummaryProvider(rawValue: d.string(forKey: "ask.provider") ?? "") ?? .anthropic
-        askBaseURL = d.string(forKey: "ask.baseURL") ?? ""
-        askModel = d.string(forKey: "ask.model") ?? ""
-        askAPIKey = SecretStore.read("ask") ?? ""
         askThinks = d.object(forKey: "ask.thinks") as? Bool ?? true
         if let note = d.string(forKey: "assistant.note") {
             self.note = note
@@ -75,13 +131,15 @@ final class AssistantService {
         }
     }
 
-    var endpoint: SummaryEndpoint { SummaryEndpoint(provider: provider, baseURL: baseURL, model: model.trimmingCharacters(in: .whitespaces)) }
+    var endpoint: SummaryEndpoint {
+        providers.resolve(liveChoice)?.endpoint ?? SummaryEndpoint(provider: .openAI, baseURL: "", model: "")
+    }
 
     /// A local server such as Ollama needs no key.
     private var isLocal: Bool { ["localhost", "127.0.0.1", "0.0.0.0"].contains(endpoint.url?.host ?? "") }
 
     var isConfigured: Bool {
-        !model.trimmingCharacters(in: .whitespaces).isEmpty
+        !endpoint.model.isEmpty
             && (!apiKey.trimmingCharacters(in: .whitespaces).isEmpty || isLocal)
             && endpoint.url != nil
     }
@@ -92,7 +150,7 @@ final class AssistantService {
 
     /// The model for questions the reader asks: its own when set, otherwise the shared one.
     var askEndpoint: SummaryEndpoint {
-        askUsesOwnModel ? SummaryEndpoint(provider: askProvider, baseURL: askBaseURL, model: askModel.trimmingCharacters(in: .whitespaces)) : endpoint
+        providers.resolve(deepChoice)?.endpoint ?? endpoint
     }
 
     var isAskConfigured: Bool {
@@ -215,7 +273,7 @@ final class AssistantService {
             return
         }
         let e = askEndpoint
-        guard let request = e.request(apiKey: askAPIKey, system: "Reply with the single word OK.", user: "ping", maxTokens: 2_000) else {
+        guard let request = e.request(apiKey: askUsesOwnModel ? askAPIKey : apiKey, system: "Reply with the single word OK.", user: "ping", maxTokens: 2_000) else {
             askTestResult = tr("The summary model’s address isn’t valid.")
             return
         }

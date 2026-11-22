@@ -93,6 +93,21 @@ final class Answerer {
     /// Called when an answer starts to show, and again when it is filed.
     @ObservationIgnored var onAnswer: () -> Void = {}
     @ObservationIgnored private var knowledge = KnowledgeBase()
+    /// The session's own documents, cut into chunks once and kept until they change.
+    @ObservationIgnored private var materialsCache: (documents: [SessionDocument], base: KnowledgeBase)?
+
+    private func materials(of t: Transcript) -> KnowledgeBase {
+        if let cached = materialsCache, cached.documents == t.documents { return cached.base }
+        let base = SessionDocuments.base(t.documents)
+        materialsCache = (t.documents, base)
+        return base
+    }
+
+    /// What to hand over of the session's documents for `query`, and whether that is all of them.
+    private func materials(of t: Transcript, for query: String) -> (text: String, whole: Bool) {
+        let base = materials(of: t)
+        return (base.excerpts(for: query, limit: SessionDocuments.wholeLimit), base.fitsWhole(limit: SessionDocuments.wholeLimit))
+    }
     @ObservationIgnored private var handled: Set<Int> = []
     /// A typed question was answered into this session, which may not be the live one: save it.
     @ObservationIgnored var onAsked: (Transcript) -> Void = { _ in }
@@ -201,13 +216,18 @@ final class Answerer {
         // A knowledge base small enough to send whole is the same every time: it goes first, on its own, to be cached.
         let whole = knowledge.fitsWhole()
         let excerpts = knowledge.excerpts(for: question)
+        // The same goes for what was attached to this session, which leads.
+        let attached = materials(of: t, for: question)
         let user = AnswerPrompt.user(question: question, asker: asker.map(name) ?? "someone",
                                      conversation: conversation, knowledge: whole ? "" : excerpts,
+                                     materials: attached.whole ? "" : attached.text,
                                      previous: previous, force: force)
         let lessons = tuner.tuning(for: mode).lessons
         guard let request = service.request(system: AnswerPrompt.system(language: language, mode: mode, role: role, extra: service.context(for: t),
                                                                         lessons: lessons),
-                                            user: user, shared: whole ? AnswerPrompt.knowledgeBlock(excerpts) : "",
+                                            user: user,
+                                            shared: (attached.whole ? AnswerPrompt.materialsBlock(attached.text) : "")
+                                                + (whole ? AnswerPrompt.knowledgeBlock(excerpts) : ""),
                                             maxTokens: 4_000, stream: true) else { return }
         skipped = nil
         write(request, into: t, live: Live(session: t.id, id: id, question: question, polish: false, committed: force),
@@ -225,8 +245,11 @@ final class Answerer {
     private func polish(_ t: Transcript, language: OutputLanguage) {
         guard let answer = t.finishedAnswer(handled: handled), let id = answer.ids.last else { return }
         handled.formUnion(answer.ids)
-        let user = PolishPrompt.user(question: answer.question, answer: answer.text,
-                                     knowledge: knowledge.excerpts(for: (answer.question ?? "") + " " + answer.text, limit: 6_000))
+        // What was attached to this session comes before the standing knowledge base.
+        let query = (answer.question ?? "") + " " + answer.text
+        let known = [materials(of: t).excerpts(for: query, limit: 6_000), knowledge.excerpts(for: query, limit: 6_000)]
+            .filter { !$0.isEmpty }.joined(separator: "\n\n")
+        let user = PolishPrompt.user(question: answer.question, answer: answer.text, knowledge: known)
         guard let request = service.request(system: PolishPrompt.system(language: language, role: role, extra: service.context(for: t)),
                                             user: user, maxTokens: 3_000, stream: true) else { return }
         write(request, into: t, live: Live(session: t.id, id: id, question: answer.text, polish: true), asker: nil)
@@ -275,7 +298,7 @@ final class Answerer {
                     item = QuestionAnswer(id: start.id, question: start.question, answer: feedback.fix ?? "",
                                           fromKnowledge: false, createdAt: .now, kind: "polish",
                                           status: feedback.status, used: feedback.used, better: feedback.better,
-                                          words: feedback.words.isEmpty ? nil : feedback.words)
+                                          words: feedback.words.isEmpty ? nil : feedback.words, detail: feedback.detail)
                 } else {
                     guard let answer = AnswerPrompt.parse(reply) else {
                         // Judged not to need an answer: say so, and offer to answer anyway.
@@ -314,7 +337,8 @@ final class Answerer {
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 12_000, name: name).text
         let previous = t.answers.filter { $0.kind == "asked" }.suffix(3).map { (question: $0.question, answer: $0.answer) }
         let user = AskPrompt.user(question: question, conversation: conversation, notes: t.summary?.text,
-                                  knowledge: knowledge.excerpts(for: question), previous: previous)
+                                  knowledge: knowledge.excerpts(for: question),
+                                  materials: materials(of: t, for: question).text, previous: previous)
         let system = AskPrompt.system(language: language, mode: mode, role: role, extra: service.context(for: t))
         let start = Live(session: t.id, id: id, question: question, polish: false, asked: true)
         askFailure = nil
@@ -421,6 +445,13 @@ enum KnowledgeLoader {
     static func supported(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
         return plain.contains(ext) || rich.contains(ext) || ext == "pdf"
+    }
+
+    /// Reads files the reader picked for one session, off the main thread. Folders aren't followed.
+    static func documents(at urls: [URL]) async -> [(name: String, text: String)] {
+        await Task.detached(priority: .userInitiated) {
+            urls.filter(supported).compactMap { url in read(url).map { (url.lastPathComponent, $0) } }
+        }.value
     }
 
     static func read(_ url: URL) -> String? {

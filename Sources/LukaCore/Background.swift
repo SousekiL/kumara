@@ -39,3 +39,39 @@ public enum SessionBackground {
         return standing.isEmpty ? block : standing + "\n\n" + block
     }
 }
+
+/// A file the reader attached to one session: their script, an agenda, the paper being discussed.
+/// Its text is read once and kept with the session, so it is still there if the file moves.
+public struct SessionDocument: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID
+    public var name: String
+    public var text: String
+
+    public init(id: UUID = UUID(), name: String, text: String) {
+        self.id = id
+        self.name = name
+        self.text = text
+    }
+}
+
+public enum SessionDocuments {
+    /// Characters kept per session, across its documents: they are saved with it.
+    public static let limit = 300_000
+    /// Characters sent whole with each answer; past this, only the parts that match the question.
+    public static let wholeLimit = 24_000
+
+    /// `documents` with one more, its text cut to what still fits; a file of the same name is replaced.
+    /// Nil when there is no text to keep or no room left.
+    public static func adding(name: String, text: String, to documents: [SessionDocument]) -> [SessionDocument]? {
+        var out = documents.filter { $0.name != name }
+        let room = limit - out.reduce(0) { $0 + $1.text.count }
+        let text = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(max(0, room)))
+        guard !text.isEmpty else { return nil }
+        out.append(SessionDocument(name: name, text: text))
+        return out
+    }
+
+    public static func base(_ documents: [SessionDocument]) -> KnowledgeBase {
+        KnowledgeBase(documents: documents.map { ($0.name, $0.text) })
+    }
+}

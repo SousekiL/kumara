@@ -10,10 +10,11 @@ public enum PolishPrompt {
         var prompt = """
         You coach a candidate during a live job interview for \(job). The candidate ("Me") just finished answering. They will glance at your reply for two seconds between questions, under pressure, so be brief and concrete. The transcript comes from speech recognition: expect broken sentences, restarts, filler and misheard words, and read through them to what the candidate meant.
 
-        Reply with exactly these five lines, nothing else:
+        Reply with exactly these six lines, nothing else:
         STATUS: complete, when the answer covered what was asked, or partial, when it missed part of it.
         USED: the story, project or number the candidate relied on, at most 6 words, or - for none.
         FIX: the single most useful fix for the candidate's next turn, at most 12 words, or - when nothing is worth fixing. One of: "Add now: …" a line to say right away when the answer missed the question; "Next: …" one habit for later answers (lead with the result, cut filler, add a number). The fix in \(notes); words to say stay in the language the candidate spoke.
+        DETAIL: one detail the candidate left out that matters: something an interviewer for this role expects to hear and won't ask for, so leaving it out reads as not knowing it. At most 16 words, or - for none. Prefer a concrete fact from the knowledge base about the same project or story (the scale, the method and why it was chosen, their own part, how the result was measured, the number), copied exactly; say what to add in \(notes), with the words to say in the language the candidate spoke. When the knowledge base has nothing on it, name the kind of detail that was missing ("how the lift was measured") and never make up a fact. Only now and then: - when the answer already had the substance, when it wasn't about a project or experience, or when the detail is minor.
         WORDS: the candidate's language slips, at most 2, most useful first, separated by " | ", or - for none. Each is "what they said → what to say", both sides in the language the candidate spoke, at most 10 words: a wrong word, a wrong form or tense, an unnatural phrase, or a word they clearly couldn't find and talked around ("the thing when one class is much bigger → class imbalance"). Only slips the candidate would want to hear about: nothing for filler, restarts or style, and nothing that looks like the recognizer mishearing a correct word.
         BETTER: a smoother version of what the candidate said, for reviewing after the interview: at most 2 short sentences (about 40 words), first person, in the language the candidate spoke. Keep their meaning and facts; add nothing they didn't say, except a number from the knowledge base that is clearly the one they were reaching for.
         No explanations, no praise.
@@ -45,6 +46,8 @@ public enum PolishPrompt {
         public var better: String?
         /// Language slips, each "what I said → what to say".
         public var words: [String] = []
+        /// A detail that mattered and was left out, to add while the question is still open.
+        public var detail: String?
     }
 
     /// The fix as far as it has come in; nil until there is one to show.
@@ -72,12 +75,13 @@ public enum PolishPrompt {
         }
         let status = value("STATUS")?.lowercased()
         return Feedback(status: status.map { $0.hasPrefix("partial") ? "partial" : "complete" },
-                        used: value("USED"), fix: value("FIX"), better: value("BETTER"), words: words(f["WORDS"]))
+                        used: value("USED"), fix: value("FIX"), better: value("BETTER"), words: words(f["WORDS"]),
+                        detail: value("DETAIL"))
     }
 
     /// "KEY: value" lines; a value can run on to the following lines until the next key.
     static func fields(_ text: String) -> [String: String] {
-        let keys = ["STATUS", "USED", "FIX", "WORDS", "BETTER"]
+        let keys = ["STATUS", "USED", "FIX", "DETAIL", "WORDS", "BETTER"]
         var out: [String: String] = [:]
         var current: String?
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -121,12 +125,15 @@ extension Transcript {
 public struct Coaching: Equatable, Sendable {
     /// The fix from my latest answer to it: an earlier one has been said or passed by.
     public var fix: String?
+    /// A detail my latest answer to it left out and that matters.
+    public var detail: String?
     /// Language slips, each "what I said → what to say", newest last.
     public var slips: [String] = []
-    public var isEmpty: Bool { fix == nil && slips.isEmpty }
+    public var isEmpty: Bool { fix == nil && detail == nil && slips.isEmpty }
 
-    public init(fix: String? = nil, slips: [String] = []) {
+    public init(fix: String? = nil, detail: String? = nil, slips: [String] = []) {
         self.fix = fix
+        self.detail = detail
         self.slips = slips
     }
 }
@@ -156,6 +163,7 @@ extension Transcript {
             let between = lines.filter { $0.id > card && $0.id < item.id && Channel($0.speaker) == .them }
             if between.contains(where: { AnswerEagerness.eager.accepts($0.original, fromThem: true) }) { continue }
             if !item.answer.isEmpty { out[card, default: Coaching()].fix = item.answer }
+            if let detail = item.detail { out[card, default: Coaching()].detail = detail }
             out[card, default: Coaching()].slips += item.words ?? []
         }
         return out.filter { !$0.value.isEmpty }

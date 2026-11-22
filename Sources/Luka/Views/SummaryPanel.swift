@@ -613,10 +613,12 @@ struct AnswerRow: Identifiable {
     let createdAt: Date?
     /// The fix from my latest answer to this question, and my newest language slips: a card is for the question first.
     var fix: String?
+    var detail: String?
     var slips: [String] = []
 
     init(_ item: QuestionAnswer, coaching: Coaching? = nil) {
         fix = coaching?.fix
+        detail = coaching?.detail
         slips = Array((coaching?.slips ?? []).suffix(3))
         id = item.id
         question = item.question
@@ -678,12 +680,16 @@ private struct AnswerCard: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             }
-            if row.fix != nil || !row.slips.isEmpty {
+            if row.fix != nil || row.detail != nil || !row.slips.isEmpty {
                 // Small and grey, under the answer: a reminder, not something to compete with it.
                 VStack(alignment: .leading, spacing: fontSize * 0.25) {
                     if let fix = row.fix {
                         Label { Text(AnswerText.styled(fix)) } icon: { Image(systemName: "lightbulb") }
                             .help(tr("A fix for your answer"))
+                    }
+                    if let detail = row.detail {
+                        Label { Text(AnswerText.styled(detail)) } icon: { Image(systemName: "plus.circle") }
+                            .help(tr("A detail worth adding to your answer"))
                     }
                     ForEach(row.slips, id: \.self) { slip in
                         Label(slip, systemImage: "textformat.abc")
@@ -988,13 +994,15 @@ private struct AskBar: View {
     @FocusState private var focused: Bool
     /// The background editor is open.
     @State private var editingBackground = false
+    /// Files that couldn't be attached, to say so.
+    @State private var attachNote: String?
     /// When the draft was last filed as background, for the note that says so.
     @State private var filedAt: Date?
 
     var body: some View {
         @Bindable var transcript = transcript
         let ready = model.assistant.isAskConfigured
-        let hasBackground = SessionBackground.isWritten(transcript.background)
+        let hasBackground = SessionBackground.isWritten(transcript.background) || !transcript.documents.isEmpty
         let busy = model.answerer.asking?.session == transcript.id
         let failure = model.answerer.askFailure.flatMap { $0.session == transcript.id ? $0 : nil }
         VStack(spacing: 0) {
@@ -1029,10 +1037,30 @@ private struct AskBar: View {
                             .scrollContentBackground(.hidden)
                             .padding(6)
                             .background(Color.primary.opacity(0.06), in: .rect(cornerRadius: 8, style: .continuous))
-                            .frame(height: 170)
+                            .frame(height: 150)
+                        ForEach(transcript.documents) { document in
+                            HStack(spacing: 6) {
+                                Image(systemName: "doc").foregroundStyle(.secondary)
+                                Text(verbatim: document.name).lineLimit(1).truncationMode(.middle)
+                                Spacer()
+                                Text(document.text.count.formatted() + " " + tr("characters")).foregroundStyle(.tertiary)
+                                Button { transcript.documents.removeAll { $0.id == document.id } } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                                }
+                                .buttonStyle(.plain)
+                                .help(tr("Remove"))
+                            }
+                            .font(.callout)
+                        }
+                        HStack {
+                            Button(tr("Add files…"), action: attach)
+                            if let attachNote { Text(attachNote).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                        }
+                        Text(tr("Your script, an agenda, the paper being discussed: PDF, Word, Markdown or text. Answers and typed questions look here first, before your knowledge base."))
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(14)
-                    .frame(width: 340)
+                    .frame(width: 360)
                 }
                 TextField("", text: $draft,
                           prompt: Text(ready ? tr("Ask about this conversation…") : tr("Pick a model in Settings › Models to ask questions")),
@@ -1096,6 +1124,33 @@ private struct AskBar: View {
         guard canSend else { return }
         model.ask(draft, in: transcript)
         draft = ""
+    }
+
+    /// Lets the reader pick files for this session, and keeps their text with it.
+    private func attach() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.message = tr("Choose files for this conversation. Their text is copied into it.")
+        NSApp.activate()
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        let transcript = transcript
+        Task {
+            let read = await KnowledgeLoader.documents(at: urls)
+            var left: [String] = urls.map(\.lastPathComponent).filter { name in !read.contains { $0.name == name } }
+            for file in read {
+                if let added = SessionDocuments.adding(name: file.name, text: file.text, to: transcript.documents) {
+                    transcript.documents = added
+                } else {
+                    left.append(file.name)
+                }
+            }
+            attachNote = left.isEmpty ? nil : tr("Couldn’t add") + ": " + left.joined(separator: ", ")
+            // Choosing files closes the popover: open it again to show what was added.
+            editingBackground = true
+        }
     }
 
     /// Keeps what was typed as background for this session instead of asking it.

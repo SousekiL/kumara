@@ -479,16 +479,20 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(p.contains("WORDS:"))
         let slips = PolishPrompt.parse("STATUS: complete\nUSED: -\nFIX: Next: lead with the result\nWORDS: I very like it → I really like it | the not equal data → imbalanced data\nBETTER: Fine.")
         #expect(slips?.words == ["I very like it → I really like it", "the not equal data → imbalanced data"])
-        #expect(slips?.fix == "Next: lead with the result")
+        #expect(slips?.fix == "Next: lead with the result" && slips?.detail == nil)
+        // A detail left out is its own line, and comes along to the question's card.
+        #expect(p.contains("DETAIL:"))
+        let d = PolishPrompt.parse("STATUS: complete\nUSED: pricing model\nFIX: -\nDETAIL: 补充样本量：\"1.2M users over 4 weeks\"\nWORDS: -\nBETTER: Fine.")
+        #expect(d?.detail == "补充样本量：\"1.2M users over 4 weeks\"" && d?.fix == nil && d?.words == [])
         // They belong to the question answered before them, not to a card of their own.
         let t = Transcript()
         t.answers = [QuestionAnswer(id: 1, question: "Q1?", answer: "A", fromKnowledge: false, createdAt: .now),
                      QuestionAnswer(id: 2, question: "said", answer: "", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["datas → data"]),
                      QuestionAnswer(id: -5, question: "typed", answer: "A", fromKnowledge: false, createdAt: .now, kind: "asked"),
-                     QuestionAnswer(id: 3, question: "said", answer: "Next: x", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["a → b"]),
+                     QuestionAnswer(id: 3, question: "said", answer: "Next: x", fromKnowledge: false, createdAt: .now, kind: "polish", words: ["a → b"], detail: "Add the sample size"),
                      QuestionAnswer(id: 4, question: "Q2?", answer: "A", fromKnowledge: false, createdAt: .now)]
         // The fix comes along, the newest one only.
-        #expect(t.coaching == [1: Coaching(fix: "Next: x", slips: ["datas → data", "a → b"])])
+        #expect(t.coaching == [1: Coaching(fix: "Next: x", detail: "Add the sample size", slips: ["datas → data", "a → b"])])
         // An answer to a question that got no card isn't put under the card before it.
         let s = Transcript()
         s.ingest(tokens([("Tell me about a project you led.", true, nil), ("<end>", true, nil)]), channel: .them)
@@ -1041,5 +1045,123 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(t.snapshot.speakerSuggestionsTaken == nil)
         t.undoSpeakerNames()
         #expect(t.speakerSuggestions.map(\.id) == [ids[1]])
+    }
+}
+
+@Suite struct ModelProviderTests {
+    @Test func modelsAreListedOnceInOrder() {
+        let p = ModelProvider(name: "", kind: .openAI, baseURL: "https://api.deepseek.com/v1", modelList: "deepseek-chat, deepseek-reasoner，deepseek-chat\n x ")
+        #expect(p.models == ["deepseek-chat", "deepseek-reasoner", "x"])
+        // Unnamed, it goes by the service its address belongs to.
+        #expect(p.title == "DeepSeek")
+        #expect(ModelProvider(name: " Mine ", kind: .anthropic).title == "Mine")
+        #expect(ModelProvider(name: "", kind: .anthropic).title == "Anthropic")
+        #expect(ModelProvider(name: "", kind: .openAI).title == "OpenAI")
+        #expect(ModelProvider(name: "", kind: .openAI, baseURL: "https://api.example.com/v1").title == "Example")
+        #expect(ModelProvider(name: "", kind: .openAI, baseURL: "http://localhost:11434/v1").title == "localhost")
+        #expect(ModelProvider(name: "", kind: .openAI, baseURL: "http://192.168.1.5:8080/v1").title == "192.168.1.5")
+    }
+
+    @Test func aChoiceResolvesUntilItsModelOrProviderIsRemoved() {
+        var p = ModelProvider(name: "A", kind: .anthropic, modelList: "claude-haiku-5-5, claude-opus-5-5")
+        let choice = ModelChoice(provider: p.id, model: "claude-opus-5-5")
+        #expect([p].resolve(choice)?.endpoint == SummaryEndpoint(provider: .anthropic, baseURL: "", model: "claude-opus-5-5"))
+        #expect([p].choices.map(\.title) == ["A · claude-haiku-5-5", "A · claude-opus-5-5"])
+        p.modelList = "claude-haiku-5-5"
+        #expect([p].resolve(choice) == nil)
+        #expect([ModelProvider]().resolve(choice) == nil && [p].resolve(nil) == nil)
+    }
+
+    @Test func oldSettingsBecomeProviders() {
+        typealias Slot = LegacyModelSettings.Slot
+        // Same address and key: one provider with both models.
+        let one = LegacyModelSettings.migrate(live: Slot(kind: .anthropic, baseURL: "", model: "claude-haiku-5-5", key: "k"),
+                                              deep: Slot(kind: .anthropic, baseURL: "", model: "claude-opus-5-5", key: "k"))
+        #expect(one.providers.count == 1 && one.providers[0].models == ["claude-haiku-5-5", "claude-opus-5-5"])
+        #expect(one.keys == [one.providers[0].id: "k"])
+        #expect(one.live?.model == "claude-haiku-5-5" && one.deep?.model == "claude-opus-5-5")
+        // Different services stay apart, each with its key.
+        let two = LegacyModelSettings.migrate(live: Slot(kind: .openAI, baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat", key: "a"),
+                                              deep: Slot(kind: .anthropic, baseURL: "", model: "claude-opus-5-5", key: "b"))
+        #expect(two.providers.count == 2 && two.live?.provider == two.providers[0].id && two.deep?.provider == two.providers[1].id)
+        #expect(two.keys[two.providers[1].id] == "b")
+        // No separate deep model: deep follows live. Nothing set at all: nothing to list.
+        #expect(LegacyModelSettings.migrate(live: Slot(kind: .openAI, baseURL: "", model: "gpt-4.1-mini", key: "a"), deep: nil).deep == nil)
+        let none = LegacyModelSettings.migrate(live: Slot(kind: .openAI, baseURL: "", model: "", key: ""), deep: nil)
+        #expect(none.providers.isEmpty && none.live == nil)
+        // A local server has no key.
+        let local = LegacyModelSettings.migrate(live: Slot(kind: .openAI, baseURL: "http://localhost:11434/v1", model: "llama3", key: ""), deep: nil)
+        #expect(local.providers.count == 1 && local.keys.isEmpty && local.live?.model == "llama3")
+    }
+}
+
+@MainActor
+@Suite struct SessionDocumentTests {
+    @Test func documentsAreKeptWithTheSession() {
+        let t = Transcript()
+        t.documents = SessionDocuments.adding(name: "script.md", text: "  Opening: we cut churn by 12%.  ", to: [])!
+        #expect(t.documents.map(\.text) == ["Opening: we cut churn by 12%."])
+        let back = Transcript(snapshot: t.snapshot)
+        #expect(back.documents == t.documents)
+        // The same file again replaces the first; an empty one isn't kept.
+        let again = SessionDocuments.adding(name: "script.md", text: "New text", to: t.documents)
+        #expect(again?.map(\.text) == ["New text"])
+        #expect(SessionDocuments.adding(name: "empty.txt", text: " \n ", to: t.documents) == nil)
+        // Past the session's limit the text is cut, and then there is no room.
+        let full = SessionDocuments.adding(name: "big.txt", text: String(repeating: "a", count: SessionDocuments.limit + 50), to: [])!
+        #expect(full[0].text.count == SessionDocuments.limit)
+        #expect(SessionDocuments.adding(name: "more.txt", text: "x", to: full) == nil)
+    }
+
+    @Test func materialsLeadTheAnswerPrompt() {
+        let system = AnswerPrompt.system(language: "English")
+        #expect(system.contains("come before everything else"))
+        let user = AnswerPrompt.user(question: "Q?", asker: "Them", conversation: "", knowledge: "K", materials: "M")
+        let m = user.range(of: "<materials>\nM")!, k = user.range(of: "<knowledge>\nK")!
+        #expect(m.lowerBound < k.lowerBound)
+        #expect(!AnswerPrompt.user(question: "Q?", asker: "Them", conversation: "", knowledge: "K").contains("<materials>"))
+        #expect(AskPrompt.user(question: "Q?", conversation: "C", notes: nil, knowledge: "", materials: "M").contains("<materials>\nM"))
+        #expect(AskPrompt.system(language: OutputLanguage("English")).contains("the materials the reader prepared"))
+        // A long document is searched rather than sent whole.
+        let base = SessionDocuments.base([SessionDocument(name: "a.md", text: String(repeating: "filler words here\n", count: 3_000) + "The holdout lifted sessions by 2.1 percent.")])
+        #expect(!base.fitsWhole(limit: SessionDocuments.wholeLimit))
+        #expect(base.excerpts(for: "What did the holdout lift?", limit: SessionDocuments.wholeLimit).contains("2.1 percent"))
+    }
+}
+
+@MainActor
+@Suite struct TitleTests {
+    @Test func theNameIsReadFromTheReply() {
+        #expect(TitlePrompt.parse("TCP Weekly Meeting") == "TCP Weekly Meeting")
+        #expect(TitlePrompt.parse("\n\"数据分析面试\"。\nbecause…") == "数据分析面试")
+        #expect(TitlePrompt.parse("Title: Design Review") == "Design Review")
+        #expect(TitlePrompt.parse("SKIP") == nil && TitlePrompt.parse("  ") == nil)
+        // A paragraph isn't a name.
+        #expect(TitlePrompt.parse(String(repeating: "word ", count: 30)) == nil)
+    }
+
+    @Test func aRepeatedNameGetsItsDate() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let date = calendar.date(from: DateComponents(year: 2026, month: 11, day: 21, hour: 20, minute: 54))!
+        #expect(TitlePrompt.unique("TCP Weekly", among: ["Appier Interview"], date: date, calendar: calendar) == "TCP Weekly")
+        #expect(TitlePrompt.unique("TCP Weekly", among: ["tcp weekly"], date: date, calendar: calendar) == "TCP Weekly 11-21")
+        #expect(TitlePrompt.unique("TCP Weekly", among: ["TCP Weekly", "TCP Weekly 11-21"], date: date, calendar: calendar) == "TCP Weekly 11-21 20:54")
+    }
+
+    @Test func theInputIsTheStartAndTheEnd() {
+        let t = Transcript()
+        for i in 0..<60 { t.ingest(tokens([("Line number \(i) of the weekly meeting about pricing.", true, nil), ("<end>", true, nil)]), channel: .them) }
+        let input = t.titleInput(name: { _ in "Them" }, opening: 200, ending: 200)
+        #expect(input.opening.contains("Line number 0 ") && input.ending.contains("Line number 59 "))
+        #expect(!input.opening.contains("Line number 30 ") && !input.ending.contains("Line number 30 "))
+        #expect(input.weight > TitlePrompt.minWeight)
+        // A short one is sent once, not twice.
+        let short = Transcript()
+        short.ingest(tokens([("Testing, one two.", true, nil), ("<end>", true, nil)]), channel: .them)
+        let s = short.titleInput(name: { _ in "Them" })
+        #expect(s.opening.contains("Testing") && s.ending.isEmpty && s.weight < TitlePrompt.minWeight)
+        let user = TitlePrompt.user(opening: "o", ending: "", notes: nil, background: "", tags: ["tcp"], earlier: ["TCP Weekly"])
+        #expect(user.contains("Its tags: tcp") && user.contains("- TCP Weekly") && !user.contains("<ending>"))
     }
 }
