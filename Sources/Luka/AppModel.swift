@@ -620,6 +620,35 @@ final class AppModel {
         if answerer.enabled {
             answerer.tuner.review(transcript, mode: assistantMode, service: assistant) { [weak self] note in self?.show(note) }
         }
+        nameSession(transcript)
+    }
+
+    /// Sessions being named right now, so one isn't asked about twice.
+    @ObservationIgnored private var naming: Set<UUID> = []
+
+    /// Gives a finished session a name from what was said, once. One the reader named, one already
+    /// named, and one too short to be more than a test keep what they have.
+    private func nameSession(_ t: Transcript) {
+        guard t.title.isEmpty, assistant.isConfigured, !naming.contains(t.id) else { return }
+        let input = t.titleInput(name: summaryName(in: t))
+        guard input.weight >= TitlePrompt.minWeight else { return }
+        let earlier = store.summaries.filter { $0.id != t.id && !$0.title.isEmpty }.map(\.title)
+        var recent: [String] = []
+        for title in earlier where !recent.contains(title) && recent.count < 20 { recent.append(title) }
+        let user = TitlePrompt.user(opening: input.opening, ending: input.ending, notes: t.summary?.text,
+                                    background: t.background, tags: t.tags, earlier: recent)
+        guard let request = assistant.request(system: TitlePrompt.system, user: user, maxTokens: 2_000) else { return }
+        naming.insert(t.id)
+        Task {
+            defer { naming.remove(t.id) }
+            do {
+                guard let name = TitlePrompt.parse(try await assistant.send(request)), t.title.isEmpty else { return }
+                t.title = TitlePrompt.unique(name, among: earlier, date: t.createdAt)
+                store.save(t)
+            } catch {
+                AudioLog.write("naming the session failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Stops the audio and the stream without sending anything more to the model.

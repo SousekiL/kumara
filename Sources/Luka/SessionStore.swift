@@ -76,7 +76,7 @@ final class SessionStore {
     func save(_ transcript: Transcript) {
         guard !deleted.contains(transcript.id) else { return }
         cache[transcript.id] = transcript
-        let prepared = SessionBackground.isWritten(transcript.background)
+        let prepared = SessionBackground.isWritten(transcript.background) || !transcript.documents.isEmpty
         // One already written is written again, so a background that was cleared doesn't come back.
         let written = summaries.contains { $0.id == transcript.id }
         guard !transcript.lines.isEmpty || prepared || written, savedRevision[transcript.id] != transcript.revision else { return }

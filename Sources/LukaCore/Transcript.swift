@@ -143,6 +143,8 @@ public struct TranscriptSnapshot: Codable, Sendable {
     public var speakerSuggestionsTaken: [SpeakerProposal]? = nil
     /// What the reader wrote about this session for the assistant; absent when nothing was written.
     public var background: String? = nil
+    /// Files the reader attached to this session; absent when there are none.
+    public var documents: [SessionDocument]? = nil
 }
 
 @MainActor
@@ -177,6 +179,8 @@ public final class Transcript: Identifiable {
     public var tags: [String] = [] { didSet { if tags != oldValue { touch() } } }
     /// What the reader wrote about this session for the assistant; see `SessionBackground`.
     public var background = "" { didSet { if background != oldValue { touch() } } }
+    /// Files the reader attached to this session, for its answers to draw on first.
+    public var documents: [SessionDocument] = [] { didSet { if documents != oldValue { touch() } } }
     /// The assistant mode the session was held in, last one used.
     public var mode: AssistantMode? { didSet { if mode != oldValue { touch() } } }
 
@@ -276,6 +280,7 @@ public final class Transcript: Identifiable {
         answers = s.answers ?? []
         tags = s.tags ?? []
         background = s.background ?? ""
+        documents = s.documents ?? []
         mode = s.mode.flatMap(AssistantMode.init(rawValue:))
         speakerBackup = s.speakerBackup
         speakerSuggestions = s.speakerSuggestions ?? []
@@ -295,7 +300,8 @@ public final class Transcript: Identifiable {
                            speakerSuggestions: speakerSuggestions.isEmpty ? nil : speakerSuggestions,
                            speakerNotes: speakerNotes.isEmpty ? nil : speakerNotes, speakerSuggestedLines: speakerSuggestedLines,
                            speakerSuggestionsTaken: speakerSuggestionsTaken.isEmpty ? nil : speakerSuggestionsTaken,
-                           background: background.isEmpty ? nil : background)
+                           background: background.isEmpty ? nil : background,
+                           documents: documents.isEmpty ? nil : documents)
     }
 
     /// Stamps the session with the time listening first starts.

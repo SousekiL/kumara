@@ -364,6 +364,9 @@ private struct ModelSettings: View {
         Preset(name: "Ollama", provider: .openAI, baseURL: "http://localhost:11434/v1", model: ""),
     ]
 
+    /// The providers whose details are open.
+    @State private var expanded: Set<UUID> = []
+
     var body: some View {
         @Bindable var model = model
         @Bindable var service = model.assistant
@@ -379,25 +382,54 @@ private struct ModelSettings: View {
                 + Text(.init("[\(tr("Get a key at console.soniox.com"))](https://console.soniox.com)"))
             }
             Section {
-                LabeledContent(tr("Service")) {
+                ForEach($service.providers) { $provider in
+                    DisclosureGroup(isExpanded: Binding(get: { expanded.contains(provider.id) },
+                                                        set: { if $0 { expanded.insert(provider.id) } else { expanded.remove(provider.id) } })) {
+                        TextField(tr("Name"), text: $provider.name, prompt: Text(verbatim: provider.title))
+                        Picker(tr("API type"), selection: $provider.kind) {
+                            Text(tr("OpenAI-compatible")).tag(SummaryProvider.openAI)
+                            Text(tr("Anthropic (Claude)")).tag(SummaryProvider.anthropic)
+                        }
+                        TextField(tr("Base URL"), text: $provider.baseURL, prompt: Text(verbatim: provider.kind.defaultBaseURL))
+                        SecureField(tr("API key"), text: Binding(get: { service.key(for: provider.id) },
+                                                                 set: { service.setKey($0, for: provider.id) }))
+                        TextField(tr("Models"), text: $provider.modelList, prompt: Text(tr("Model names, separated by commas")))
+                        HStack {
+                            Spacer()
+                            Button(tr("Remove"), role: .destructive) { service.removeProvider(provider.id) }
+                        }
+                    } label: {
+                        LabeledContent(provider.title) {
+                            Text(provider.models.isEmpty ? tr("No models yet") : provider.models.joined(separator: ", "))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                    }
+                }
+                LabeledContent(tr("Add a provider")) {
                     Menu(tr("Choose a preset")) {
                         ForEach(Self.presets) { preset in
                             Button(preset.name) {
-                                service.provider = preset.provider
-                                service.baseURL = preset.baseURL
-                                service.model = preset.model
+                                expanded.insert(service.addProvider(name: preset.name, kind: preset.provider, baseURL: preset.baseURL, model: preset.model))
                             }
+                        }
+                        Divider()
+                        Button(tr("Custom")) {
+                            expanded.insert(service.addProvider(name: "", kind: .openAI, baseURL: "", model: ""))
                         }
                     }
                     .fixedSize()
                 }
-                Picker(tr("API type"), selection: $service.provider) {
-                    Text(tr("OpenAI-compatible")).tag(SummaryProvider.openAI)
-                    Text(tr("Anthropic (Claude)")).tag(SummaryProvider.anthropic)
+            } header: {
+                Text(tr("Model providers"))
+            } footer: {
+                Text(tr("Add each service once, with its key and the models you use there. The two sections below then pick from these models, so switching is one click. A preset fills in the address and a model name to start from."))
+            }
+            Section {
+                Picker(tr("Model"), selection: $service.liveChoice) {
+                    if service.providers.resolve(service.liveChoice) == nil { Text(tr("Choose a model")).tag(ModelChoice?.none) }
+                    ForEach(service.providers.choices, id: \.choice) { Text(verbatim: $0.title).tag(ModelChoice?.some($0.choice)) }
                 }
-                TextField(tr("Base URL"), text: $service.baseURL, prompt: Text(verbatim: service.provider.defaultBaseURL))
-                TextField(tr("Model"), text: $service.model, prompt: Text(tr("The model’s name at this service")))
-                SecureField(tr("API key"), text: $service.apiKey)
                 HStack {
                     if service.testing {
                         ProgressView().controlSize(.small)
@@ -412,50 +444,32 @@ private struct ModelSettings: View {
             } header: {
                 Text(tr("Live assistant"))
             } footer: {
-                Text(tr("Writes the live summary, the answers to questions heard, feedback on your answers, and the review after each session. It runs every few seconds while listening, so pick a fast, inexpensive model. A preset fills in the address and a model name to start from."))
+                Text(tr("Writes the live summary, the answers to questions heard, feedback on your answers, and the review after each session. It runs every few seconds while listening, so pick a fast, inexpensive model."))
             }
 
             // Questions typed in the panel can take a stronger, slower model than the live helpers.
             Section {
-                Toggle(tr("Use a separate model"), isOn: $service.askUsesOwnModel)
-                if service.askUsesOwnModel {
-                    LabeledContent(tr("Service")) {
-                        Menu(tr("Choose a preset")) {
-                            ForEach(Self.presets) { preset in
-                                Button(preset.name) {
-                                    service.askProvider = preset.provider
-                                    service.askBaseURL = preset.baseURL
-                                    service.askModel = preset.model
-                                }
-                            }
-                        }
-                        .fixedSize()
-                    }
-                    Picker(tr("API type"), selection: $service.askProvider) {
-                        Text(tr("OpenAI-compatible")).tag(SummaryProvider.openAI)
-                        Text(tr("Anthropic (Claude)")).tag(SummaryProvider.anthropic)
-                    }
-                    TextField(tr("Base URL"), text: $service.askBaseURL, prompt: Text(verbatim: service.askProvider.defaultBaseURL))
-                    TextField(tr("Model"), text: $service.askModel, prompt: Text(tr("The model’s name at this service")))
-                    SecureField(tr("API key"), text: $service.askAPIKey)
-                    HStack {
-                        if service.askTesting {
-                            ProgressView().controlSize(.small)
-                        } else if let result = service.askTestResult {
-                            Text(result).foregroundStyle(.secondary).lineLimit(2)
-                        }
-                        Spacer()
-                        Button(tr("Test")) { service.testAsk() }
-                            .disabled(service.askTesting || !service.isAskConfigured)
-                    }
-                    .font(.callout)
+                Picker(tr("Model"), selection: $service.deepChoice) {
+                    Text(tr("Same as the live assistant")).tag(ModelChoice?.none)
+                    ForEach(service.providers.choices, id: \.choice) { Text(verbatim: $0.title).tag(ModelChoice?.some($0.choice)) }
                 }
+                HStack {
+                    if service.askTesting {
+                        ProgressView().controlSize(.small)
+                    } else if let result = service.askTestResult {
+                        Text(result).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    Spacer()
+                    Button(tr("Test")) { service.testAsk() }
+                        .disabled(service.askTesting || !service.isAskConfigured)
+                }
+                .font(.callout)
                 Toggle(tr("Think deeply"), isOn: $service.askThinks)
                 Toggle(tr("Suggest speaker names when I open the speakers list"), isOn: Bindable(model.speakerIdentifier).suggestsAutomatically)
             } header: {
                 Text(tr("Deep analysis"))
             } footer: {
-                Text(tr("Used when you ask for something and can wait: questions typed in the ask box, and working out who each speaker is. Worth a stronger model. Off: the live assistant’s model does these too. Think deeply turns on thinking at medium effort for Claude and for OpenAI-compatible models; if a model doesn’t accept a setting, it steps down to one it does."))
+                Text(tr("Used when you ask for something and can wait: questions typed in the ask box, and working out who each speaker is. Worth a stronger model. Think deeply turns on thinking at medium effort for Claude and for OpenAI-compatible models; if a model doesn’t accept a setting, it steps down to one it does."))
             }
         }
         .formStyle(.grouped)
