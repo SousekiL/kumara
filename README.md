@@ -96,69 +96,9 @@ Listen to Mac audio, the microphone, or both. The interface speaks English, 한�
 
 <img src="docs/icon/kumara.png" width="96" alt="Kumara" align="right">
 
-This fork builds as **Kumara** (`~/Applications/Kumara.app`; it was called Luka Plus, and keeps that bundle ID, `io.github.sousekil.luka-plus`, so settings, keys and permissions carry over), so it sits beside the original Luka without being mistaken for it. The name is for Kumārajīva (鸠摩罗什), the translator whose versions of the sutras are still read today. The icon's source is `docs/icon/kumara.svg`. It takes over the original's settings on first launch and shares its API key and sessions; don't run both at once. Settings › Captions › **Font** sets the font for captions, the transcript and the summary.
+This fork builds as **Kumara** (`~/Applications/Kumara.app`), so it sits beside the original Luka without being mistaken for it. The name is for Kumārajīva (鸠摩罗什), the translator whose versions of the sutras are still read today. It shares Luka's API key and sessions; don't run both at once.
 
-## Meetings and interviews
-
-Settings › General › **Meetings and interviews**, also in the menu bar:
-
-| Option | What it does |
-| --- | --- |
-| Label Me and Them by source | With **Mac Audio + Microphone**, the microphone is always **Me** and the Mac audio is always **Them**, on two separate Soniox streams. No more guessing voices; costs a second stream while on. |
-| Translate my speech | In Me / Them mode, translate your own words too, or only write them down. |
-| Pin the latest question | Keeps the latest question (from Them, or anyone when Me / Them is off) above the captions while you answer. Click × to unpin. Off by default. |
-
-## Usage
-
-Settings › General › **Usage** shows audio sent to Soniox this session, this month and last month, with an estimated cost ($0.12 per hour transcribed, $0.18 per hour translated, per stream). The menu bar shows this month's total.
-
-## Live summary
-
-Settings › **Assistant**: pick any OpenAI-compatible model (OpenAI, DeepSeek, Qwen, OpenRouter, Ollama…) or Claude, with its own API key. While you listen, a column beside the transcript keeps running notes: every few sentences, new points are added at the end under topic headings, in the order they were said, and what is already written stays put, so you only read the newest lines to keep up. ↻ writes the notes again from the whole transcript; they are saved with the session and lead the Markdown export. The transcript text goes to the model's provider; use Ollama to keep it on your Mac.
-
-## Assistant modes
-
-Pick **Lecture**, **Meeting** or **Interview** at the top of the summary column, in the menu bar, or in Settings › Assistant. A mode sets the scene in one go, and every switch it sets can still be changed by hand afterwards:
-
-| | Lecture | Meeting | Interview |
-|---|---|---|---|
-| Summary | off | on (running notes) | off |
-| Answers | off | off | on |
-| Me / Them | off | on (others numbered) | on |
-| Pin the latest question | off | off | on |
-| Polish my answers | — | — | on |
-
-Settings › Assistant › **This conversation** holds the role you're interviewing for and one note about this conversation, read by both the summary and the answers. Settings › **Knowledge** holds what stays the same: files, folders and your own notes.
-
-## Interview answers and the question tracker
-
-In Interview mode an answer is a skeleton to speak from, not a script: a one-line gist, then up to three numbered cues shaped by the question type (behavioral: situation → what I did → result with a number; product or metric case: clarify → north star and guardrails → approach; technical: answer → when to use → pitfall), then a ⚓ anchor line naming your own project, story or number from the knowledge base and the file it came from. Nothing is invented: with no match, the anchor says so.
-
-After you answer, polishing shows at most one fix to use in your next turn. Whether the answer covered the question, the story it used and a smoother version are kept for the review afterwards. The Summary tab lists every question so far with ✓ answered / ⚠ missed a part and the story used, built from the answers themselves at no extra cost. Each session remembers its mode.
-
-## Lectures: sections and key terms
-
-Lecture notes now grow like the others instead of being rewritten: a numbered "## " section per part of the talk, frozen once the talk moves on, so nothing you've read moves. Terms the speaker introduces are noted as "[Term] term — gloss — definition" and gathered in a **Key terms** box above the notes.
-
-## Meetings: for you, tags and catching up
-
-Set your names in Settings › Knowledge › You. In Meeting mode, the notes start with a **For you** strip: the latest lines that mention you by name and the tasks the notes give you. Notes tag bullets [Decision], [Action → owner], [Open ?] and [Number], each in its own color, and a reversed decision gets a ↺ line instead of an edit. A question put to you gets a three-cue reply outline (my position, the evidence, the next step). The ↺-clock button above the notes is **Catch me up**: one request, only when pressed, for what was just said.
-
-## Sessions: tags and batch actions
-
-Right-click a session › **Tags…** to tag it; tags show under each session and in a bar above the list, where choosing one lists only sessions with it. ⌘- or ⇧-click selects several sessions: right-click for **Tag**, **Copy** or **Delete** on all of them at once, or use the buttons in the window.
-
-## Floating button
-
-While Luka listens, a small button sits on the right edge of the screen, its dots moving with the sound. Click it for the summary and answers in a floating panel over any app, full-screen ones included; a red mark means an answer arrived while it was closed. Its top half opens the panel, its bottom half shows or hides the captions. Drag it up or down; turn it off in Settings › Assistant › Output or the menu bar's Windows menu. With the Dark caption style, the panel uses the same black and opacity as the captions.
-
-## Answers and knowledge base
-
-Settings › Assistant › **Answers**: when someone else asks a question, the summary's model writes a short answer with hints in the **Answers** column beside the transcript. It draws first on your **knowledge base**: files and folders you point it at (Markdown, text, PDF, Word; folders are read in place and reread at the start of each session, so an existing notes or memory folder works as it is) plus your own notes. What the knowledge base doesn't cover, the model answers from its own knowledge, and each answer says which it was. Answers stream in as they are written: the question shows at once, then the gist, then the points, with the words to say in the accent color.
-
-## Soniox account
-
-Settings › General › **Soniox account** shows what Soniox itself reports: this month's cost for your key's project (all apps), and, with an organization API key (`snx_org_…`), the prepaid balance, also shown in the menu bar.
+On top of Luka it adds running notes beside the transcript, written by a language model of your choice (Settings › Models), session tags, and a usage and cost view. The install command above installs the original Luka; to get Kumara, build it from source as below.
 
 ## Privacy
 
