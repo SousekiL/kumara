@@ -1165,3 +1165,84 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(user.contains("Its tags: tcp") && user.contains("- TCP Weekly") && !user.contains("<ending>"))
     }
 }
+
+@MainActor
+@Suite struct AnswerThreadTests {
+    @Test func theThreadLineIsAHeader() {
+        let a = AnswerPrompt.parse("SOURCE: knowledge\nTYPE: case\nTHREAD: same\nQUESTION: 一周内怎么重提？\n先对账\n① Day 1")
+        #expect(a?.continues == true && a?.kind == "case" && a?.question == "一周内怎么重提？" && a?.text == "先对账\n① Day 1")
+        #expect(AnswerPrompt.parse("SOURCE: model\nTYPE: case\nTHREAD: new\nText")?.continues == false)
+        // Without the line, a question stands alone.
+        #expect(AnswerPrompt.parse("SOURCE: model\nTYPE: case\nText")?.continues == false)
+        // Still only headers: nothing to show yet, but the model has committed to answering.
+        #expect(AnswerPrompt.partial("SOURCE: model\nTYPE: case\nTHREAD: sa") == nil)
+        #expect(AnswerPrompt.partial("SOURCE: model\nTYPE: case\nTHREAD: same\n先对账")?.continues == true)
+        #expect(AnswerPrompt.committed("THREAD: same"))
+        // The headers in another order are still headers.
+        let b = AnswerPrompt.parse("TYPE: case\nTHREAD: same\nSOURCE: knowledge\n先对账")
+        #expect(b?.kind == "case" && b?.continues == true && b?.fromKnowledge == true && b?.text == "先对账")
+        // "Thread: …" further down is part of the answer.
+        #expect(AnswerPrompt.parse("SOURCE: model\nGist\nThread: same pool")?.text == "Gist\nThread: same pool")
+    }
+
+    /// Outside an interview the reply has no THREAD header, and an answer can open with the word.
+    @Test func anAnswerAboutThreadsIsNotAHeader() {
+        let a = AnswerPrompt.parse("SOURCE: model\nThread: each one runs on its own stack.")
+        #expect(a?.text == "Thread: each one runs on its own stack." && a?.continues == false)
+        // Even when it is the whole reply, it isn't taken for a skip.
+        #expect(AnswerPrompt.parse("Thread: each one runs on its own stack.")?.text == "Thread: each one runs on its own stack.")
+        #expect(AnswerPrompt.parse("SOURCE: model\nThread: new threads start in the pool.")?.text == "Thread: new threads start in the pool.")
+        // Starting over keeps the last attempt's own headers, and only those.
+        let b = AnswerPrompt.parse("SOURCE: model\nFirst try\nTYPE: case\nTHREAD: same\nSOURCE: knowledge\n先对账")
+        #expect(b?.continues == true && b?.kind == "case" && b?.text == "先对账")
+        #expect(AnswerPrompt.thread("THREAD: SAME.") == true && AnswerPrompt.thread("THREAD: NEW") == false)
+    }
+
+    @Test func partsOfOneQuestionStayTogether() {
+        // A case read out in parts, a typed question in between, then a new topic and a late follow-up.
+        let groups = AnswerThreads.group([(291, nil), (299, 291), (301, 291), (-5, nil), (303, 291), (373, nil), (391, 373), (343, 291)])
+        #expect(groups == [[291, 299, 301, 303, 343], [373, 391], [-5]])
+        // Sessions from before threads: one card each, newest first.
+        #expect(AnswerThreads.group([(1, nil), (2, nil), (3, nil)]) == [[3], [2], [1]])
+        #expect(AnswerThreads.group([]).isEmpty)
+        // In a group the first part leads, the newest is shown in full, the rest fold away.
+        let parts = AnswerThreads.parts(groups[0])
+        #expect(parts?.lead == 291 && parts?.folded == [299, 301, 303] && parts?.newest == 343)
+        let two = AnswerThreads.parts([373, 391])
+        #expect(two?.lead == 373 && two?.folded == [] && two?.newest == 391)
+        // One card is just itself.
+        let one = AnswerThreads.parts([-5])
+        #expect(one?.lead == -5 && one?.folded == [] && one?.newest == nil)
+        #expect(AnswerThreads.parts([Int]()) == nil)
+    }
+
+    @Test func aFollowUpJoinsTheOpenThread() {
+        let t = Transcript()
+        #expect(t.openThread == nil)
+        t.answers = [QuestionAnswer(id: 291, question: "Q", answer: "A", fromKnowledge: false, createdAt: .now)]
+        #expect(t.openThread == 291)
+        t.answers.append(QuestionAnswer(id: 299, question: "Q", answer: "A", fromKnowledge: false, createdAt: .now, thread: 291))
+        // Feedback and typed questions in between don't break it; the root stays the first part.
+        t.answers.append(QuestionAnswer(id: 300, question: "said", answer: "", fromKnowledge: false, createdAt: .now, kind: "polish"))
+        t.answers.append(QuestionAnswer(id: -5, question: "typed", answer: "A", fromKnowledge: false, createdAt: .now, kind: "asked"))
+        #expect(t.openThread == 291)
+        #expect(t.heardAnswers.map(\.id) == [291, 299])
+        #expect(Transcript(snapshot: t.snapshot).answers[1].thread == 291)
+        // An answer the reader asked for is told what came before, so it can carry it on, but not to skip.
+        let forced = AnswerPrompt.user(question: "Q?", asker: "Them", conversation: "", knowledge: "", previous: ["Earlier?"], force: true)
+        #expect(forced.contains("Questions already answered:\n- Earlier?") && !forced.contains("reply SKIP if"))
+        #expect(AnswerPrompt.user(question: "Q?", asker: "Them", conversation: "", knowledge: "", previous: ["Earlier?"]).contains("reply SKIP if"))
+    }
+
+    @Test func interviewAnswersSayWhatIsTestedAndWhatToStress() {
+        let p = AnswerPrompt.system(language: OutputLanguage("Simplified Chinese", spoken: "English"), mode: .interview, role: "Data Analyst")
+        for mark in ["💡 ", "🎯 ", "❗ ", "≈ ", "THREAD: same", "THREAD: new"] { #expect(p.contains(mark)) }
+        // The explanation is in the reader's language, the cues in the one being spoken.
+        #expect(p.contains("one short sentence of Simplified Chinese") && p.contains("each at most 8 words of English"))
+        // The explanation and the mapping aren't repeated on a follow-up.
+        #expect(p.contains("new question only: first 1 to 3 lines") && p.contains("Then (new question only), only together with the 💡 lines"))
+        // Outside interviews none of this is asked for.
+        let meeting = AnswerPrompt.system(language: "English", mode: .meeting)
+        #expect(!meeting.contains("🎯") && !meeting.contains("THREAD:"))
+    }
+}
