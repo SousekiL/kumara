@@ -36,6 +36,8 @@ final class Answerer {
         var restated: String?
         /// The model has begun a real answer, so the card can show; until then it may still skip.
         var committed = false
+        /// The question this one carries on, once the model has said it does.
+        var thread: Int?
     }
 
     /// A heard question the model judged needed no answer, offered to answer anyway.
@@ -284,6 +286,7 @@ final class Answerer {
                         self.live?.fromKnowledge = shown.fromKnowledge
                         self.live?.kind = shown.kind
                         self.live?.restated = shown.question
+                        self.live?.thread = shown.continues ? t.openThread : nil
                     } else if let restated = AnswerPrompt.parse(text + "\nx")?.question {
                         // The restated question arrives before the answer: show it in the pin at once.
                         self.live?.restated = restated
@@ -307,7 +310,7 @@ final class Answerer {
                     }
                     item = QuestionAnswer(id: start.id, question: start.question, answer: answer.text,
                                           fromKnowledge: answer.fromKnowledge, createdAt: .now, kind: answer.kind,
-                                          restated: answer.question)
+                                          restated: answer.question, thread: answer.continues ? t.openThread : nil)
                 }
                 t.answers.append(item)
                 onAnswer()

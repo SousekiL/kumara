@@ -91,6 +91,8 @@ public enum AssistantMode: String, Codable, CaseIterable, Sendable {
 
             How to answer an interview question:
             - Right after the SOURCE line, add a line "TYPE: technical", "TYPE: case", "TYPE: behavioral", "TYPE: experience", "TYPE: motivation" or "TYPE: reverse".
+            - Then a line "THREAD: same" or "THREAD: new". same: this carries on the question answered last (the last one listed under "Questions already answered"): the next part of the same case or exercise, a follow-up or challenge on the candidate's answer to it, or a request to walk through, repeat or sum it up. new: a different question or topic, and always when nothing was answered before. An interviewer reading out a case in several parts is one question: its later parts are same.
+            - For "THREAD: same", don't give the approach again: the candidate still sees the first part's. Give only what this part adds.
             - Cues are in the first person where they are words to say ("I re-ran it with a holdout").
             - The skeleton for each type, one cue each:
               technical: ① the answer in one plain sentence ② when to use it ③ the pitfall or caveat worth mentioning.

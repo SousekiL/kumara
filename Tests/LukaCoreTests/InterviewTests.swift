@@ -1165,3 +1165,52 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(user.contains("Its tags: tcp") && user.contains("- TCP Weekly") && !user.contains("<ending>"))
     }
 }
+
+@MainActor
+@Suite struct AnswerThreadTests {
+    @Test func theThreadLineIsAHeader() {
+        let a = AnswerPrompt.parse("SOURCE: knowledge\nTYPE: case\nTHREAD: same\nQUESTION: 一周内怎么重提？\n先对账\n① Day 1")
+        #expect(a?.continues == true && a?.kind == "case" && a?.question == "一周内怎么重提？" && a?.text == "先对账\n① Day 1")
+        #expect(AnswerPrompt.parse("SOURCE: model\nTYPE: case\nTHREAD: new\nText")?.continues == false)
+        // Without the line, a question stands alone.
+        #expect(AnswerPrompt.parse("SOURCE: model\nTYPE: case\nText")?.continues == false)
+        // Still only headers: nothing to show yet, but the model has committed to answering.
+        #expect(AnswerPrompt.partial("SOURCE: model\nTYPE: case\nTHREAD: sa") == nil)
+        #expect(AnswerPrompt.partial("SOURCE: model\nTYPE: case\nTHREAD: same\n先对账")?.continues == true)
+        #expect(AnswerPrompt.committed("THREAD: same"))
+        // "Thread: …" further down is part of the answer.
+        #expect(AnswerPrompt.parse("SOURCE: model\nGist\nThread: same pool")?.text == "Gist\nThread: same pool")
+    }
+
+    @Test func partsOfOneQuestionStayTogether() {
+        // A case read out in parts, a typed question in between, then a new topic and a late follow-up.
+        let groups = AnswerThreads.group([(291, nil), (299, 291), (301, 291), (-5, nil), (303, 291), (373, nil), (391, 373), (343, 291)])
+        #expect(groups == [[291, 299, 301, 303, 343], [373, 391], [-5]])
+        // Sessions from before threads: one card each, newest first.
+        #expect(AnswerThreads.group([(1, nil), (2, nil), (3, nil)]) == [[3], [2], [1]])
+        #expect(AnswerThreads.group([]).isEmpty)
+    }
+
+    @Test func aFollowUpJoinsTheOpenThread() {
+        let t = Transcript()
+        #expect(t.openThread == nil)
+        t.answers = [QuestionAnswer(id: 291, question: "Q", answer: "A", fromKnowledge: false, createdAt: .now)]
+        #expect(t.openThread == 291)
+        t.answers.append(QuestionAnswer(id: 299, question: "Q", answer: "A", fromKnowledge: false, createdAt: .now, thread: 291))
+        // Feedback and typed questions in between don't break it; the root stays the first part.
+        t.answers.append(QuestionAnswer(id: 300, question: "said", answer: "", fromKnowledge: false, createdAt: .now, kind: "polish"))
+        t.answers.append(QuestionAnswer(id: -5, question: "typed", answer: "A", fromKnowledge: false, createdAt: .now, kind: "asked"))
+        #expect(t.openThread == 291)
+        #expect(Transcript(snapshot: t.snapshot).answers[1].thread == 291)
+    }
+
+    @Test func interviewAnswersSayWhatIsTestedAndWhatToStress() {
+        let p = AnswerPrompt.system(language: OutputLanguage("Simplified Chinese", spoken: "English"), mode: .interview, role: "Data Analyst")
+        for mark in ["💡 ", "🎯 ", "❗ ", "≈ ", "THREAD: same", "THREAD: new"] { #expect(p.contains(mark)) }
+        // The explanation is in the reader's language, the cues in the one being spoken.
+        #expect(p.contains("one short sentence of Simplified Chinese") && p.contains("each at most 8 words of English"))
+        // Outside interviews none of this is asked for.
+        let meeting = AnswerPrompt.system(language: "English", mode: .meeting)
+        #expect(!meeting.contains("🎯") && !meeting.contains("THREAD:"))
+    }
+}

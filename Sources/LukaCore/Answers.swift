@@ -27,10 +27,13 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
     public var words: [String]?
     /// For a polish: a detail that mattered and was left out of my answer.
     public var detail: String?
+    /// The line of the question this one continues: a later part of the same case, or a follow-up to it.
+    /// Nil for a question that starts its own.
+    public var thread: Int?
 
     public init(id: Int, question: String, answer: String, fromKnowledge: Bool, createdAt: Date, kind: String? = nil,
                 status: String? = nil, used: String? = nil, better: String? = nil, source: String? = nil,
-                restated: String? = nil, words: [String]? = nil, detail: String? = nil) {
+                restated: String? = nil, words: [String]? = nil, detail: String? = nil, thread: Int? = nil) {
         self.id = id
         self.question = question
         self.answer = answer
@@ -44,6 +47,7 @@ public struct QuestionAnswer: Codable, Sendable, Equatable, Identifiable {
         self.restated = restated
         self.words = words
         self.detail = detail
+        self.thread = thread
     }
 
     /// The question as shown: restated when the model gave one, otherwise its last sentence.
@@ -222,8 +226,12 @@ public enum AnswerPrompt {
     static func interviewBody(_ language: OutputLanguage) -> String {
         let spoken = language.spoken ?? language.explain
         return """
-        After the header lines, exactly this and nothing more:
-        Line 1: the gist, at most 15 words of \(language.explain) (about 25 characters in Chinese): what the answer is or how to approach it. Not a sentence to read out.
+        After the header lines, exactly this and nothing more. The lines marked "new question only" are left out when the THREAD line says same: the candidate still has them in front of them from the first part.
+        Only when the question is outside what the candidate has done themselves (a field, system or situation their knowledge base and materials show no direct work in): first 1 to 3 lines, each starting with "💡 " and one short sentence of \(language.explain) (the reader's own language, whatever language the interview is in): what the unfamiliar term or situation is, what is being asked in plain words, and what the interviewer is really after. For a question in familiar territory, no such lines.
+        Next: the gist, at most 15 words of \(language.explain) (about 25 characters in Chinese): what the answer is or how to approach it. Not a sentence to read out.
+        Then (new question only) one line starting with "🎯 ": what the interviewer is testing with this question, the skill or judgement, at most 20 words of \(language.explain).
+        Then (new question only) 1 or 2 lines, each starting with "❗ ": a detail the answer must bring out, the kind that reads as not knowing it when left unsaid, at most 16 words of \(language.explain). Prefer the candidate's own facts from the knowledge base or materials (a number, the method and why, their own part, how the result was checked), copied exactly; with none, say which kind of detail to stress.
+        Then, only together with the 💡 lines and only when the knowledge base or materials hold something close: one line starting with "≈ ": the candidate's own work this question maps onto, with the file it came from in brackets and how the pieces correspond ("their X is your Y"), at most 35 words of \(language.explain), e.g. ≈ [resume.md] 就是你做过的订单对账：监管的统计=官方订单记录，报告条数=完成订单数. Then shape the cues on that work's steps.
         Then 2 or 3 cue lines, starting with ①, ② and ③, each at most 8 words of \(spoken): the skeleton for this type of question (see below). Cues to speak from, not sentences to read out. Technical terms stay in \(spoken).
         Then, when it applies, one anchor line starting with "⚓ ": the candidate's own project, story or number from the knowledge base that fits, with the file it came from in brackets, at most 15 words, e.g. ⚓ [projects.md] Search ranking holdout: +2.1% sessions. Copy names and numbers exactly.
         For behavioral, experience and motivation questions the anchor line is required: when nothing in the knowledge base fits, write exactly "⚓ —". For other types, leave it out unless something clearly fits.
@@ -263,12 +271,12 @@ public enum AnswerPrompt {
 
     /// What can be shown of a reply still coming in: nil while it is only header lines,
     /// or could still turn out to be SKIP.
-    public static func partial(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?, question: String?)? {
+    public static func partial(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?, question: String?, continues: Bool)? {
         var lines = reply.split(separator: "\n", omittingEmptySubsequences: false)
         // A header line still being written isn't text to show.
         if !reply.hasSuffix("\n"), let last = lines.last {
             let upper = last.trimmingCharacters(in: .whitespaces).uppercased()
-            if upper.isEmpty || ["SOURCE:", "TYPE:", "QUESTION:"].contains(where: { $0.hasPrefix(upper) || upper.hasPrefix($0) }) {
+            if upper.isEmpty || headers.contains(where: { $0.hasPrefix(upper) || upper.hasPrefix($0) }) {
                 lines.removeLast()
             }
         }
@@ -280,8 +288,11 @@ public enum AnswerPrompt {
     /// which a skip never has. Until then the question may still turn out to need no answer.
     public static func committed(_ reply: String) -> Bool {
         let head = SummaryPrompt.clean(reply).trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        return ["SOURCE:", "TYPE:", "QUESTION:"].contains { head.hasPrefix($0) }
+        return headers.contains { head.hasPrefix($0) }
     }
+
+    /// The lines a reply opens with, before the answer itself.
+    static let headers = ["SOURCE:", "TYPE:", "THREAD:", "QUESTION:"]
 
     /// Whether text so far could still be the start of SKIP.
     static func maySkip(_ text: String) -> Bool {
@@ -290,7 +301,9 @@ public enum AnswerPrompt {
     }
 
     /// The answer, where it came from and its kind, or nil when the model declined to answer.
-    public static func parse(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?, question: String?)? {
+    /// `continues` is whether it carries on the question answered before it.
+    public static func parse(_ reply: String) -> (text: String, fromKnowledge: Bool, kind: String?, question: String?, continues: Bool)? {
+        var continues = false
         var fromKnowledge = false
         var kind: String?
         var question: String?
@@ -308,7 +321,7 @@ public enum AnswerPrompt {
         for line in lines {
             if leading {
                 let u = line.trimmingCharacters(in: .whitespaces).uppercased()
-                if u.hasPrefix("SOURCE:") || u.hasPrefix("TYPE:") || u.hasPrefix("QUESTION:") { sawHeader = true }
+                if headers.contains(where: { u.hasPrefix($0) }) { sawHeader = true }
             }
             let upper = line.trimmingCharacters(in: .whitespaces).uppercased()
             if leading, upper.hasPrefix("SOURCE:") {
@@ -316,6 +329,8 @@ public enum AnswerPrompt {
             } else if leading, upper.hasPrefix("TYPE:") {
                 let value = upper.dropFirst(5).trimmingCharacters(in: .whitespaces).lowercased()
                 kind = kinds.contains(value) ? value : nil
+            } else if leading, upper.hasPrefix("THREAD:") {
+                continues = upper.dropFirst(7).trimmingCharacters(in: .whitespaces).hasPrefix("SAME")
             } else if leading, upper.hasPrefix("QUESTION:") {
                 let value = line.trimmingCharacters(in: .whitespaces).dropFirst(9).trimmingCharacters(in: .whitespaces)
                 question = value.isEmpty ? nil : value
@@ -328,7 +343,7 @@ public enum AnswerPrompt {
         let bare = text.trimmingCharacters(in: CharacterSet(charactersIn: " .。\n")).uppercased()
         // "SKIP - small talk" is still a skip; after real headers, only a bare SKIP is.
         if bare.isEmpty || bare == "SKIP" || (!sawHeader && bare.hasPrefix("SKIP")) { return nil }
-        return (text, fromKnowledge, kind, question)
+        return (text, fromKnowledge, kind, question, continues)
     }
 
     /// The last real SOURCE header: "SOURCE:" followed by one of the words the format allows.
@@ -362,6 +377,30 @@ extension Transcript {
     }
 }
 
+
+extension Transcript {
+    /// The question a new answer would carry on: the one answered last, or the one that began its thread.
+    public var openThread: Int? {
+        answers.last { $0.kind != "polish" && $0.kind != "asked" }.map { $0.thread ?? $0.id }
+    }
+}
+
+/// Answer cards put together by the question they belong to.
+public enum AnswerThreads {
+    /// The cards in groups: each group oldest first, so the part that set out the approach leads it;
+    /// the groups newest first, by their latest card. `thread` is nil for a card on its own.
+    public static func group(_ cards: [(id: Int, thread: Int?)]) -> [[Int]] {
+        var order: [Int] = []
+        var groups: [Int: [Int]] = [:]
+        for card in cards {
+            let key = card.thread ?? card.id
+            groups[key, default: []].append(card.id)
+            order.removeAll { $0 == key }
+            order.append(key)
+        }
+        return order.reversed().compactMap { groups[$0] }
+    }
+}
 
 /// A question the reader types about the conversation, answered on request.
 public enum AskPrompt {
