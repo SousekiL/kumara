@@ -149,13 +149,11 @@ public struct QuestionLogEntry: Equatable, Sendable, Identifiable {
 }
 
 extension Transcript {
-    /// The interviewer's questions in order, each with how my answer went: a polish belongs to the
-    /// question answered last before it. Built from the answers already made, with no extra request.
     /// The feedback on my answers to each heard question, by the question's line. It sits under the
     /// question's card, never in one of its own. An answer I gave to a question that got no card
     /// (one judged to need no answer) has no card to sit under, so its feedback isn't shown.
     public var coaching: [Int: Coaching] {
-        let cards = answers.filter { $0.kind != "polish" && $0.kind != "asked" }.map(\.id).sorted()
+        let cards = heardAnswers.map(\.id).sorted()
         var out: [Int: Coaching] = [:]
         for item in answers where item.kind == "polish" {
             // A polish carries the line my answer ended on: the card is the last question before it.
@@ -169,6 +167,8 @@ extension Transcript {
         return out.filter { !$0.value.isEmpty }
     }
 
+    /// The interviewer's questions in order, each with how my answer went: a polish belongs to the
+    /// question answered last before it. Built from the answers already made, with no extra request.
     public var questionLog: [QuestionLogEntry] {
         var log: [QuestionLogEntry] = []
         for item in answers {

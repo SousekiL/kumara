@@ -227,11 +227,11 @@ public enum AnswerPrompt {
         let spoken = language.spoken ?? language.explain
         return """
         After the header lines, exactly this and nothing more. The lines marked "new question only" are left out when the THREAD line says same: the candidate still has them in front of them from the first part.
-        Only when the question is outside what the candidate has done themselves (a field, system or situation their knowledge base and materials show no direct work in): first 1 to 3 lines, each starting with "💡 " and one short sentence of \(language.explain) (the reader's own language, whatever language the interview is in): what the unfamiliar term or situation is, what is being asked in plain words, and what the interviewer is really after. For a question in familiar territory, no such lines.
+        Only when the question is outside what the candidate has done themselves (a field, system or situation their knowledge base and materials show no direct work in), new question only: first 1 to 3 lines, each starting with "💡 " and one short sentence of \(language.explain) (the reader's own language, whatever language the interview is in): what the unfamiliar term or situation is, what is being asked in plain words, and what the interviewer is really after. For a question in familiar territory, no such lines.
         Next: the gist, at most 15 words of \(language.explain) (about 25 characters in Chinese): what the answer is or how to approach it. Not a sentence to read out.
         Then (new question only) one line starting with "🎯 ": what the interviewer is testing with this question, the skill or judgement, at most 20 words of \(language.explain).
         Then (new question only) 1 or 2 lines, each starting with "❗ ": a detail the answer must bring out, the kind that reads as not knowing it when left unsaid, at most 16 words of \(language.explain). Prefer the candidate's own facts from the knowledge base or materials (a number, the method and why, their own part, how the result was checked), copied exactly; with none, say which kind of detail to stress.
-        Then, only together with the 💡 lines and only when the knowledge base or materials hold something close: one line starting with "≈ ": the candidate's own work this question maps onto, with the file it came from in brackets and how the pieces correspond ("their X is your Y"), at most 35 words of \(language.explain), e.g. ≈ [resume.md] 就是你做过的订单对账：监管的统计=官方订单记录，报告条数=完成订单数. Then shape the cues on that work's steps.
+        Then (new question only), only together with the 💡 lines and only when the knowledge base or materials hold something close: one line starting with "≈ ": the candidate's own work this question maps onto, with the file it came from in brackets and how the pieces correspond ("their X is your Y"), at most 35 words of \(language.explain), e.g. ≈ [resume.md] 就是你做过的订单对账：监管的统计=官方订单记录，报告条数=完成订单数. Then shape the cues on that work's steps.
         Then 2 or 3 cue lines, starting with ①, ② and ③, each at most 8 words of \(spoken): the skeleton for this type of question (see below). Cues to speak from, not sentences to read out. Technical terms stay in \(spoken).
         Then, when it applies, one anchor line starting with "⚓ ": the candidate's own project, story or number from the knowledge base that fits, with the file it came from in brackets, at most 15 words, e.g. ⚓ [projects.md] Search ranking holdout: +2.1% sessions. Copy names and numbers exactly.
         For behavioral, experience and motivation questions the anchor line is required: when nothing in the knowledge base fits, write exactly "⚓ —". For other types, leave it out unless something clearly fits.
@@ -257,7 +257,9 @@ public enum AnswerPrompt {
             out += "Recent conversation:\n<conversation>\n\(conversation)\n</conversation>\n\n"
         }
         if !previous.isEmpty {
-            out += "Questions already answered (reply SKIP if this only repeats one of them; a follow-up asking for more is new):\n"
+            // Asked for by the reader, it is answered whatever came before; the list still says what it may carry on.
+            out += force ? "Questions already answered:\n"
+                : "Questions already answered (reply SKIP if this only repeats one of them; a follow-up asking for more is new):\n"
             out += previous.map { "- \($0)" }.joined(separator: "\n") + "\n\n"
         }
         out += "The question to answer, asked by \(asker):\n<question>\n\(question)\n</question>"
@@ -311,8 +313,11 @@ public enum AnswerPrompt {
         var lines = SummaryPrompt.clean(reply).split(separator: "\n", omittingEmptySubsequences: false)
         // A model that changed its mind halfway starts over with a new SOURCE line: keep only the last attempt.
         if let last = Self.lastHeader(lines.map(String.init)) {
+            // Its TYPE and THREAD lines may come before it.
             var start = last
-            if start > 0, lines[start - 1].trimmingCharacters(in: .whitespaces).uppercased().hasPrefix("TYPE:") { start -= 1 }
+            while start > 0, ["TYPE:", "THREAD:"].contains(where: { lines[start - 1].trimmingCharacters(in: .whitespaces).uppercased().hasPrefix($0) }) {
+                start -= 1
+            }
             lines = Array(lines[start...])
         }
         // SOURCE and TYPE lead the reply, in either order.
@@ -379,9 +384,15 @@ extension Transcript {
 
 
 extension Transcript {
+    /// The answers to questions heard in the conversation, in order: the ones that get a card of
+    /// their own. Not feedback on my answers, and not questions I typed.
+    public var heardAnswers: [QuestionAnswer] {
+        answers.filter { $0.kind != "polish" && $0.kind != "asked" }
+    }
+
     /// The question a new answer would carry on: the one answered last, or the one that began its thread.
     public var openThread: Int? {
-        answers.last { $0.kind != "polish" && $0.kind != "asked" }.map { $0.thread ?? $0.id }
+        heardAnswers.last.map { $0.thread ?? $0.id }
     }
 }
 
@@ -399,6 +410,13 @@ public enum AnswerThreads {
             order.append(key)
         }
         return order.reversed().compactMap { groups[$0] }
+    }
+
+    /// How a group is laid out: the first part leads and stays in view, the newest is shown in full,
+    /// the ones between fold away. A group of one has only its lead.
+    public static func parts<Card>(_ group: [Card]) -> (lead: Card, folded: [Card], newest: Card?)? {
+        guard let lead = group.first else { return nil }
+        return (lead, Array(group.dropFirst().dropLast()), group.count > 1 ? group.last : nil)
     }
 }
 

@@ -1178,6 +1178,9 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.partial("SOURCE: model\nTYPE: case\nTHREAD: sa") == nil)
         #expect(AnswerPrompt.partial("SOURCE: model\nTYPE: case\nTHREAD: same\n先对账")?.continues == true)
         #expect(AnswerPrompt.committed("THREAD: same"))
+        // The headers in another order are still headers.
+        let b = AnswerPrompt.parse("TYPE: case\nTHREAD: same\nSOURCE: knowledge\n先对账")
+        #expect(b?.kind == "case" && b?.continues == true && b?.fromKnowledge == true && b?.text == "先对账")
         // "Thread: …" further down is part of the answer.
         #expect(AnswerPrompt.parse("SOURCE: model\nGist\nThread: same pool")?.text == "Gist\nThread: same pool")
     }
@@ -1189,6 +1192,15 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         // Sessions from before threads: one card each, newest first.
         #expect(AnswerThreads.group([(1, nil), (2, nil), (3, nil)]) == [[3], [2], [1]])
         #expect(AnswerThreads.group([]).isEmpty)
+        // In a group the first part leads, the newest is shown in full, the rest fold away.
+        let parts = AnswerThreads.parts(groups[0])
+        #expect(parts?.lead == 291 && parts?.folded == [299, 301, 303] && parts?.newest == 343)
+        let two = AnswerThreads.parts([373, 391])
+        #expect(two?.lead == 373 && two?.folded == [] && two?.newest == 391)
+        // One card is just itself.
+        let one = AnswerThreads.parts([-5])
+        #expect(one?.lead == -5 && one?.folded == [] && one?.newest == nil)
+        #expect(AnswerThreads.parts([Int]()) == nil)
     }
 
     @Test func aFollowUpJoinsTheOpenThread() {
@@ -1201,7 +1213,12 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         t.answers.append(QuestionAnswer(id: 300, question: "said", answer: "", fromKnowledge: false, createdAt: .now, kind: "polish"))
         t.answers.append(QuestionAnswer(id: -5, question: "typed", answer: "A", fromKnowledge: false, createdAt: .now, kind: "asked"))
         #expect(t.openThread == 291)
+        #expect(t.heardAnswers.map(\.id) == [291, 299])
         #expect(Transcript(snapshot: t.snapshot).answers[1].thread == 291)
+        // An answer the reader asked for is told what came before, so it can carry it on, but not to skip.
+        let forced = AnswerPrompt.user(question: "Q?", asker: "Them", conversation: "", knowledge: "", previous: ["Earlier?"], force: true)
+        #expect(forced.contains("Questions already answered:\n- Earlier?") && !forced.contains("reply SKIP if"))
+        #expect(AnswerPrompt.user(question: "Q?", asker: "Them", conversation: "", knowledge: "", previous: ["Earlier?"]).contains("reply SKIP if"))
     }
 
     @Test func interviewAnswersSayWhatIsTestedAndWhatToStress() {
@@ -1209,6 +1226,8 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         for mark in ["💡 ", "🎯 ", "❗ ", "≈ ", "THREAD: same", "THREAD: new"] { #expect(p.contains(mark)) }
         // The explanation is in the reader's language, the cues in the one being spoken.
         #expect(p.contains("one short sentence of Simplified Chinese") && p.contains("each at most 8 words of English"))
+        // The explanation and the mapping aren't repeated on a follow-up.
+        #expect(p.contains("new question only: first 1 to 3 lines") && p.contains("Then (new question only), only together with the 💡 lines"))
         // Outside interviews none of this is asked for.
         let meeting = AnswerPrompt.system(language: "English", mode: .meeting)
         #expect(!meeting.contains("🎯") && !meeting.contains("THREAD:"))

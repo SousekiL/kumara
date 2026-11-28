@@ -344,9 +344,8 @@ struct SummaryPanel: View {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(groups, id: \.first?.id) { group in
                     Group {
-                        if group.count == 1, let row = group.first {
-                            card(row, askers: askers, active: row.id == newest, dimmed: row.id != newest)
-                        } else if let first = group.first, let last = group.last {
+                        if let parts = AnswerThreads.parts(group), let last = parts.newest {
+                            let first = parts.lead
                             let current = last.id == newest
                             HStack(alignment: .top, spacing: 8) {
                                 // One line down the side says these belong to the same question.
@@ -357,28 +356,35 @@ struct SummaryPanel: View {
                                         .font(.caption).foregroundStyle(.secondary)
                                     // The first part stays in view for as long as the question runs.
                                     card(first, askers: askers, active: false, dimmed: !current)
-                                    ForEach(group.dropFirst().dropLast()) { row in
-                                        if openedParts.contains(row.id) {
-                                            card(row, askers: askers, active: false, dimmed: true)
-                                                .onTapGesture { openedParts.remove(row.id) }
-                                        } else {
-                                            Button { openedParts.insert(row.id) } label: {
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: "chevron.right").font(.system(size: 9))
-                                                    Text(row.restated ?? Questions.lastSentence(row.question) ?? row.question).lineLimit(1)
-                                                    Spacer(minLength: 0)
-                                                }
-                                                .font(.caption).foregroundStyle(.secondary)
-                                                .padding(.vertical, 2).padding(.horizontal, 12)
-                                                .contentShape(.rect)
+                                    ForEach(parts.folded) { row in
+                                        let opened = openedParts.contains(row.id)
+                                        // The same line opens a part and folds it again.
+                                        Button { openedParts.formSymmetricDifference([row.id]) } label: {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: opened ? "chevron.down" : "chevron.right").font(.system(size: 9))
+                                                Text(row.restated ?? Questions.lastSentence(row.question) ?? row.question).lineLimit(1)
+                                                Spacer(minLength: 0)
                                             }
-                                            .buttonStyle(.plain)
-                                            .help(row.question)
+                                            .font(.caption).foregroundStyle(.secondary)
+                                            .padding(.vertical, 2).padding(.horizontal, 12)
+                                            .contentShape(.rect)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .help(row.question)
+                                        if opened {
+                                            card(row, askers: askers, active: false, dimmed: true)
+                                        } else if row.hasCoaching {
+                                            // Feedback on my answer to a part comes in after the next part has
+                                            // folded it: it shows all the same.
+                                            CoachingLines(row: row, fontSize: model.assistant.fontSize, family: model.fontFamily)
+                                                .padding(.leading, 27).padding(.trailing, 12)
                                         }
                                     }
                                     card(last, askers: askers, active: current, dimmed: !current)
                                 }
                             }
+                        } else if let row = group.first {
+                            card(row, askers: askers, active: row.id == newest, dimmed: row.id != newest)
                         }
                     }
                     // A new card slides in from the top; one being written becomes the finished card in place.
@@ -694,6 +700,36 @@ struct AnswerRow: Identifiable {
     }
 
     var streaming: Bool { createdAt == nil }
+    var hasCoaching: Bool { fix != nil || detail != nil || !slips.isEmpty }
+    /// An answer in the interview format, whose lines are marked by how they begin.
+    var isInterviewAnswer: Bool { !asked && kind != nil && kind != "for-me" }
+}
+
+/// Feedback on my own answer to a question: small and grey, a reminder that doesn't compete with the answer.
+private struct CoachingLines: View {
+    let row: AnswerRow
+    let fontSize: Double
+    let family: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: fontSize * 0.25) {
+            if let fix = row.fix {
+                Label { Text(AnswerText.styled(fix)) } icon: { Image(systemName: "lightbulb") }
+                    .help(tr("A fix for your answer"))
+            }
+            if let detail = row.detail {
+                Label { Text(AnswerText.styled(detail)) } icon: { Image(systemName: "plus.circle") }
+                    .help(tr("A detail worth adding to your answer"))
+            }
+            ForEach(row.slips, id: \.self) { slip in
+                Label(slip, systemImage: "textformat.abc")
+                    .help(tr("Your wording: what you said → what to say"))
+            }
+        }
+        .font(LukaFont.font(family, size: max(11, fontSize - 2)))
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+    }
 }
 
 /// One question and its answer: the question small, the gist to say first, then points to make,
@@ -720,7 +756,7 @@ private struct AnswerCard: View {
                     .help(row.question)
             }
             if let answer = row.answer {
-                AnswerText(markdown: answer, fontSize: fontSize, family: family)
+                AnswerText(markdown: answer, fontSize: fontSize, family: family, marks: row.isInterviewAnswer)
             } else {
                 // Not past the model's header yet: it may still decide this needs no answer.
                 HStack(spacing: 6) {
@@ -730,26 +766,7 @@ private struct AnswerCard: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             }
-            if row.fix != nil || row.detail != nil || !row.slips.isEmpty {
-                // Small and grey, under the answer: a reminder, not something to compete with it.
-                VStack(alignment: .leading, spacing: fontSize * 0.25) {
-                    if let fix = row.fix {
-                        Label { Text(AnswerText.styled(fix)) } icon: { Image(systemName: "lightbulb") }
-                            .help(tr("A fix for your answer"))
-                    }
-                    if let detail = row.detail {
-                        Label { Text(AnswerText.styled(detail)) } icon: { Image(systemName: "plus.circle") }
-                            .help(tr("A detail worth adding to your answer"))
-                    }
-                    ForEach(row.slips, id: \.self) { slip in
-                        Label(slip, systemImage: "textformat.abc")
-                            .help(tr("Your wording: what you said → what to say"))
-                    }
-                }
-                .font(LukaFont.font(family, size: max(11, fontSize - 2)))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
+            if row.hasCoaching { CoachingLines(row: row, fontSize: fontSize, family: family) }
             footer
         }
         .contentShape(.rect)
@@ -797,12 +814,15 @@ struct AnswerText: View {
     let family: String
     /// The Chinese font, so a change redraws the text.
     var cjk: String = LukaFont.cjkFamily
+    /// Whether this is an interview answer, whose lines are marked by how they begin. Anywhere else
+    /// a line that happens to open with "≈" is just text.
+    var marks = false
 
     private enum Kind { case gist, bullet, cue(String), anchor, text, insight, focus, stress, bridge }
 
     /// Lines an interview answer marks by how they begin. The explanation of an unfamiliar question
     /// comes before the gist, so it doesn't count as it.
-    private static let marked: [(prefix: String, kind: Kind)] = [
+    private static let markers: [(prefix: String, kind: Kind)] = [
         ("💡", .insight), ("🎯", .focus), ("❗️", .stress), ("❗", .stress), ("≈", .bridge),
     ]
 
@@ -824,7 +844,7 @@ struct AnswerText: View {
                 sawGist = true
                 return (.anchor, String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
             }
-            if let mark = Self.marked.first(where: { line.hasPrefix($0.prefix) }) {
+            if marks, let mark = Self.markers.first(where: { line.hasPrefix($0.prefix) }) {
                 return (mark.kind, String(line.dropFirst(mark.prefix.count)).trimmingCharacters(in: .whitespaces))
             }
             if !sawGist {
@@ -870,11 +890,11 @@ struct AnswerText: View {
                         AnchorLine(text: line.text, fontSize: fontSize, family: family, symbol: "arrow.left.arrow.right")
                     case .insight:
                         // What an unfamiliar question is asking, in the reader's own language: to read, not to say.
-                        marked("lightbulb", line.text, color: .secondary, weight: .regular)
+                        markedLine("lightbulb", line.text, tint: nil)
                     case .focus:
-                        marked("scope", line.text, color: LukaTheme.accent, weight: .semibold)
+                        markedLine("scope", line.text, tint: LukaTheme.accent)
                     case .stress:
-                        marked("exclamationmark.circle.fill", line.text, color: .orange, weight: .medium)
+                        markedLine("exclamationmark.circle.fill", line.text, tint: .orange)
                     case .text:
                         Text(Self.styled(line.text))
                             .font(LukaFont.font(family, size: fontSize))
@@ -887,17 +907,23 @@ struct AnswerText: View {
         .textSelection(.enabled)
     }
 
-    private func marked(_ symbol: String, _ text: String, color: Color, weight: NSFont.Weight) -> some View {
+    /// A line led by a symbol. With a tint it is one to act on (what is tested, what to stress) and
+    /// stands out on the card: bold, on a band of that color. Without, it is background to read.
+    private func markedLine(_ symbol: String, _ text: String, tint: Color?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Image(systemName: symbol)
                 .font(.system(size: max(10, fontSize - 3)))
-                .foregroundStyle(color)
+                .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
                 .frame(width: fontSize * 0.95, alignment: .leading)
             Text(Self.styled(text))
-                .foregroundStyle(weight == .regular ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                .foregroundStyle(tint == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .lineSpacing(fontSize * 0.3)
         }
-        .font(LukaFont.font(family, size: fontSize, weight: weight))
+        .font(LukaFont.font(family, size: fontSize, weight: tint == nil ? .regular : .semibold))
+        .padding(.vertical, tint == nil ? 0 : 5)
+        .padding(.horizontal, tint == nil ? 0 : 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((tint ?? .clear).opacity(0.14), in: .rect(cornerRadius: 7))
     }
 
     /// Inline Markdown, with text in quotes in the accent color.

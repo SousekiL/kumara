@@ -214,7 +214,7 @@ final class Answerer {
                         language: OutputLanguage, name: (SpeakerID) -> String, force: Bool) {
         let conversation = t.summaryText(after: nil, closedOnly: false, limit: 1_500, name: name).text
         // Only questions the other side asked: my own answers and typed questions aren't repeats to skip.
-        let previous = force ? [] : t.answers.filter { $0.kind != "polish" && $0.kind != "asked" }.suffix(3).map(\.shownQuestion)
+        let previous = t.heardAnswers.suffix(3).map(\.shownQuestion)
         // A knowledge base small enough to send whole is the same every time: it goes first, on its own, to be cached.
         let whole = knowledge.fitsWhole()
         let excerpts = knowledge.excerpts(for: question)
@@ -276,9 +276,13 @@ final class Answerer {
                     guard let self, self.live?.id == start.id else { return }
                     let first = self.live?.text == nil
                     defer { if first, self.live?.text != nil { self.onAnswer() } }
-                    // Committed once the header starts, or, for a model that skips the header, once there is text to show.
+                    // Committed once the headers reach the QUESTION line: by then the THREAD line has said whether
+                    // the card stands alone or goes under the question it carries on, so it appears in its place.
+                    // For a model that skips the headers, once there is text to show.
                     if !start.polish, self.live?.committed == false,
-                       AnswerPrompt.committed(text) || AnswerPrompt.partial(text) != nil { self.live?.committed = true }
+                       (AnswerPrompt.committed(text) && text.uppercased().contains("QUESTION:")) || AnswerPrompt.partial(text) != nil {
+                        self.live?.committed = true
+                    }
                     if start.polish {
                         self.live?.text = PolishPrompt.partial(text)
                     } else if let shown = AnswerPrompt.partial(text) {
@@ -287,9 +291,10 @@ final class Answerer {
                         self.live?.kind = shown.kind
                         self.live?.restated = shown.question
                         self.live?.thread = shown.continues ? t.openThread : nil
-                    } else if let restated = AnswerPrompt.parse(text + "\nx")?.question {
-                        // The restated question arrives before the answer: show it in the pin at once.
-                        self.live?.restated = restated
+                    } else if let head = AnswerPrompt.parse(text + "\nx") {
+                        // The headers arrive before the answer: show the restated question in the pin at once.
+                        if let restated = head.question { self.live?.restated = restated }
+                        if head.continues { self.live?.thread = t.openThread }
                     }
                 }
                 guard !Task.isCancelled else { return }
