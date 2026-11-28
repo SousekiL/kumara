@@ -315,7 +315,9 @@ public enum AnswerPrompt {
         if let last = Self.lastHeader(lines.map(String.init)) {
             // Its TYPE and THREAD lines may come before it.
             var start = last
-            while start > 0, ["TYPE:", "THREAD:"].contains(where: { lines[start - 1].trimmingCharacters(in: .whitespaces).uppercased().hasPrefix($0) }) {
+            while start > 0 {
+                let before = lines[start - 1].trimmingCharacters(in: .whitespaces).uppercased()
+                guard before.hasPrefix("TYPE:") || thread(before) != nil else { break }
                 start -= 1
             }
             lines = Array(lines[start...])
@@ -324,31 +326,40 @@ public enum AnswerPrompt {
         var leading = true
         var sawHeader = false
         for line in lines {
-            if leading {
-                let u = line.trimmingCharacters(in: .whitespaces).uppercased()
-                if headers.contains(where: { u.hasPrefix($0) }) { sawHeader = true }
-            }
             let upper = line.trimmingCharacters(in: .whitespaces).uppercased()
             if leading, upper.hasPrefix("SOURCE:") {
                 fromKnowledge = upper.contains("KNOWLEDGE")
             } else if leading, upper.hasPrefix("TYPE:") {
                 let value = upper.dropFirst(5).trimmingCharacters(in: .whitespaces).lowercased()
                 kind = kinds.contains(value) ? value : nil
-            } else if leading, upper.hasPrefix("THREAD:") {
-                continues = upper.dropFirst(7).trimmingCharacters(in: .whitespaces).hasPrefix("SAME")
+            } else if leading, let same = thread(upper) {
+                continues = same
             } else if leading, upper.hasPrefix("QUESTION:") {
                 let value = line.trimmingCharacters(in: .whitespaces).dropFirst(9).trimmingCharacters(in: .whitespaces)
                 question = value.isEmpty ? nil : value
             } else {
                 leading = false
                 body.append(line)
+                continue
             }
+            sawHeader = true
         }
         let text = body.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
         let bare = text.trimmingCharacters(in: CharacterSet(charactersIn: " .。\n")).uppercased()
         // "SKIP - small talk" is still a skip; after real headers, only a bare SKIP is.
         if bare.isEmpty || bare == "SKIP" || (!sawHeader && bare.hasPrefix("SKIP")) { return nil }
         return (text, fromKnowledge, kind, question, continues)
+    }
+
+    /// A THREAD header's value: true for same, false for new. Nil for any other line, so an answer
+    /// that begins "Thread: each one runs…" (only interview replies carry the header) stays an answer.
+    static func thread(_ upper: String) -> Bool? {
+        guard upper.hasPrefix("THREAD:") else { return nil }
+        switch upper.dropFirst(7).trimmingCharacters(in: CharacterSet(charactersIn: " .\"'")) {
+        case "SAME": return true
+        case "NEW": return false
+        default: return nil
+        }
     }
 
     /// The last real SOURCE header: "SOURCE:" followed by one of the words the format allows.

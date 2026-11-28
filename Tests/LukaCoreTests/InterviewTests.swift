@@ -1185,6 +1185,19 @@ private func tokens(_ list: [(String, Bool, String?)], speaker: String? = nil) -
         #expect(AnswerPrompt.parse("SOURCE: model\nGist\nThread: same pool")?.text == "Gist\nThread: same pool")
     }
 
+    /// Outside an interview the reply has no THREAD header, and an answer can open with the word.
+    @Test func anAnswerAboutThreadsIsNotAHeader() {
+        let a = AnswerPrompt.parse("SOURCE: model\nThread: each one runs on its own stack.")
+        #expect(a?.text == "Thread: each one runs on its own stack." && a?.continues == false)
+        // Even when it is the whole reply, it isn't taken for a skip.
+        #expect(AnswerPrompt.parse("Thread: each one runs on its own stack.")?.text == "Thread: each one runs on its own stack.")
+        #expect(AnswerPrompt.parse("SOURCE: model\nThread: new threads start in the pool.")?.text == "Thread: new threads start in the pool.")
+        // Starting over keeps the last attempt's own headers, and only those.
+        let b = AnswerPrompt.parse("SOURCE: model\nFirst try\nTYPE: case\nTHREAD: same\nSOURCE: knowledge\n先对账")
+        #expect(b?.continues == true && b?.kind == "case" && b?.text == "先对账")
+        #expect(AnswerPrompt.thread("THREAD: SAME.") == true && AnswerPrompt.thread("THREAD: NEW") == false)
+    }
+
     @Test func partsOfOneQuestionStayTogether() {
         // A case read out in parts, a typed question in between, then a new topic and a late follow-up.
         let groups = AnswerThreads.group([(291, nil), (299, 291), (301, 291), (-5, nil), (303, 291), (373, nil), (391, 373), (343, 291)])
